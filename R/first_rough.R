@@ -23,9 +23,6 @@ SUM.amp <- do.call(cbind, by(OTUs, amplicon, colSums))
 ## nummber of reads overall
 sum(SUM.amp)
 
-## display how many reads per Amplicon were obtained
-pheatmap(SUM.amp)
-
 ## pdf("overall_heat.pdf", width=14, height=14)
 pheatmap(log10(t(SUM.amp+1)))
 ## dev.off()
@@ -39,6 +36,36 @@ c <- hclust(d)
 ## pdf("without_nomralization_cluster.pdf", width=18, height=14)
 plot(c)
 ## dev.off()
+
+## a crude background reduction by setting  all counts below an outlier detection to zero
+## http://stats.stackexchange.com/questions/56402/detecting-outliers-in-count-data
+out.z <- function(x){
+    trans <- log10(as.numeric(x))
+    ## a trick to not assess the distribution of zeros, ones and twos
+    ## assumed here to be true negatives
+    NN <- which(trans>0)
+    rob.z <- (trans-median(trans[NN]))/mad(trans[NN])
+    z.outl <- which(!rob.z>quantile(rob.z[NN], 0.05, na.rm=TRUE))
+}
+
+for(i in 1:nrow(OTUs)){
+    OTUs[i, out.z(OTUs[i,])] <- 0
+}
+
+## Maybe much harder just kill when away from the mean/median?
+
+######## Analyse just the READ counts per amplicon and sample #####
+SUM.amp <- do.call(cbind, by(OTUs, amplicon, colSums))
+
+## nummber of reads overall
+sum(SUM.amp)
+
+
+### We have to get rid of this water!!!
+## pdf("overall_heat.pdf", width=14, height=14)
+pheatmap(log10(t(SUM.amp+1)))
+## dev.off()
+
 
 ## FAILED samples
 clusters <- cut(as.dendrogram(c), h=7)
@@ -57,6 +84,10 @@ per.sample[order(per.sample)]
 ## a simple normalization by multiplying with the fraction of the top
 ## (what about median??) count per sample
 norm.factor <- max(per.sample)/per.sample
+## avoid too big for failed ## crude thresholding
+norm.factor[norm.factor>100] <- 100
+
+
 D.mat.snorm <- D.mat*norm.factor
 
 SUM.amp.norm <- do.call(cbind, by(t(D.mat.snorm), amplicon, colSums))
@@ -147,14 +178,14 @@ ggplot(rep.OTUs, aes(OTUc.1, OTUc.2, color=F1, shape=F2)) + geom_point() +
 
 ## adding regression equation and R2 using code from github
 ## http://stackoverflow.com/questions/7549694/ggplot2-adding-regression-line-equation-and-r2-on-graph
-library(devtools)
-source_gist("524eade46135f6348140")
+## library(devtools)
+## source_gist("524eade46135f6348140")
 
 
 ## pdf("replicates_raw.pdf", width=30, height = 30)
 ggplot(rep.OTUs, aes(log10(OTUc.1+1), log10(OTUc.2+1), color=F1, shape=F2)) +
     geom_point() +
-    stat_smooth_func(geom="text",method="lm",hjust=0,parse=TRUE) +
+##     stat_smooth_func(geom="text",method="lm",hjust=0,parse=TRUE) +
     geom_smooth(method="lm",se=FALSE) +
     facet_wrap(~sample, scale="free")
 ## dev.off()
@@ -163,7 +194,9 @@ ggplot(rep.OTUs, aes(log10(OTUc.1+1), log10(OTUc.2+1), color=F1, shape=F2)) +
 ggplot(rep.OTUs.snorm, aes(log10(OTUc.1+1), log10(OTUc.2+1),
                            color=F1, shape=F2)) +
     geom_point() +
-    stat_smooth_func(geom="text",method="lm",hjust=0,parse=TRUE) +
+
+
+##    stat_smooth_func(geom="text",method="lm",hjust=0,parse=TRUE) +
     geom_smooth(method="lm",se=FALSE) +
     facet_wrap(~sample, scale="free")
 ## dev.off()
@@ -238,7 +271,7 @@ TAX.sum.snorm.rep <- reshape.two.cols(as.data.frame(TAX.sum.snorm))
 ggplot(TAX.sum.snorm.rep, aes(log10(OTUc.1+1), log10(OTUc.2+1),
                            color=F1, shape=F2)) +
     geom_point() +
-    stat_smooth_func(geom="text",method="lm",hjust=0,parse=TRUE) +
+#    stat_smooth_func(geom="text",method="lm",hjust=0,parse=TRUE) +
     geom_smooth(method="lm",se=FALSE) +
     facet_wrap(~sample, scale="free")
 ## dev.off()
@@ -258,7 +291,7 @@ TAX.sum.snorm.rep.trunc <- subset(TAX.sum.snorm.rep,
 ggplot(TAX.sum.snorm.rep.trunc, aes(log10(OTUc.1), log10(OTUc.2),
                            color=F1, shape=F2)) +
     geom_point() +
-    stat_smooth_func(geom="text",method="lm",hjust=0,parse=TRUE) +
+##    stat_smooth_func(geom="text",method="lm",hjust=0,parse=TRUE) +
     geom_smooth(method="lm",se=FALSE) +
     facet_wrap(~sample, scale="free")
 ## dev.off()
@@ -272,3 +305,7 @@ TAX.sum.snorm$Row.names <- NULL
 
 rownames(TAX.sum.snorm) <- make.unique(as.character(TAX.sum.snorm$species))
 TAX.sum.snorm$species <- NULL
+
+TAX.sum.snorm <- TAX.sum.snorm[order(rowSums(TAX.sum.snorm), decreasing=TRUE), ]
+
+pheatmap(log(TAX.sum.snorm[200:300,]+0.1))
