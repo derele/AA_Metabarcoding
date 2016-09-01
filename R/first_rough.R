@@ -4,7 +4,7 @@ library(pheatmap)
 library(reshape2)
 
 #################### Analyse the OTU data alone #####################
-OTUs <- read.csv("ALL_otus_samples_replaced.csv", sep = ";")
+OTUs <- read.csv("data/ALL_otus_samples_replaced.csv", sep = ";")
 OTUs$X <- NULL # remove an empty variable  
 
 ## Make it an all numeric data
@@ -151,22 +151,22 @@ library(devtools)
 source_gist("524eade46135f6348140")
 
 
-pdf("replicates_raw.pdf", width=30, height = 30)
+## pdf("replicates_raw.pdf", width=30, height = 30)
 ggplot(rep.OTUs, aes(log10(OTUc.1+1), log10(OTUc.2+1), color=F1, shape=F2)) +
     geom_point() +
     stat_smooth_func(geom="text",method="lm",hjust=0,parse=TRUE) +
     geom_smooth(method="lm",se=FALSE) +
     facet_wrap(~sample, scale="free")
-dev.off()
+## dev.off()
 
-pdf("replicates_snorm.pdf", width=30, height = 30)
+## pdf("replicates_snorm.pdf", width=30, height = 30)
 ggplot(rep.OTUs.snorm, aes(log10(OTUc.1+1), log10(OTUc.2+1),
                            color=F1, shape=F2)) +
     geom_point() +
     stat_smooth_func(geom="text",method="lm",hjust=0,parse=TRUE) +
     geom_smooth(method="lm",se=FALSE) +
     facet_wrap(~sample, scale="free")
-dev.off()
+## dev.off()
 
 ################ YOUR TASK: FIND A BETTER NORMALIZATION OR PERFORME RAREFRACTION ######################
 ## You can try: a) normalize to a lower number and use floor() to make
@@ -178,7 +178,7 @@ dev.off()
 
 #######################################################################################
 ## read in the BLAST taxonomy assignment
-BLASTs <- read.csv("ALL_blast_results_119.csv", sep = ";")
+BLASTs <- read.csv("data/ALL_blast_results_119.csv", sep = ";")
 
 ## do we have a common row of ids to merge 
 length(intersect(rownames(OTUs), BLASTs$qu))
@@ -234,14 +234,14 @@ TAX.sum.snorm <- t(TAX.sum.mat.snorm)
 
 TAX.sum.snorm.rep <- reshape.two.cols(as.data.frame(TAX.sum.snorm))
 
-pdf("replicates_tax_sum_snorm.pdf", width=30, height = 30)
+## pdf("replicates_tax_sum_snorm.pdf", width=30, height = 30)
 ggplot(TAX.sum.snorm.rep, aes(log10(OTUc.1+1), log10(OTUc.2+1),
                            color=F1, shape=F2)) +
     geom_point() +
     stat_smooth_func(geom="text",method="lm",hjust=0,parse=TRUE) +
     geom_smooth(method="lm",se=FALSE) +
     facet_wrap(~sample, scale="free")
-dev.off()
+## dev.off()
 
 
 ### Using a crude way of resolving what should be resolved by a more
@@ -254,14 +254,14 @@ table(TAX.sum.snorm.rep$OTUc.1>0 & TAX.sum.snorm.rep$OTUc.2>0)
 TAX.sum.snorm.rep.trunc <- subset(TAX.sum.snorm.rep,
                                   OTUc.1 >0 & OTUc.2 >0)
 
-pdf("replicates_tax_sum_snorm_trunc.pdf", width=30, height = 30)
+## pdf("replicates_tax_sum_snorm_trunc.pdf", width=30, height = 30)
 ggplot(TAX.sum.snorm.rep.trunc, aes(log10(OTUc.1), log10(OTUc.2),
                            color=F1, shape=F2)) +
     geom_point() +
     stat_smooth_func(geom="text",method="lm",hjust=0,parse=TRUE) +
     geom_smooth(method="lm",se=FALSE) +
     facet_wrap(~sample, scale="free")
-dev.off()
+## dev.off()
 
 ## add species name instead of taxid
 taxid.species <- unique(DATA[,c("taxid", "species")])
