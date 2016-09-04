@@ -12,9 +12,9 @@ use Bio::LITE::Taxonomy::NCBI;
 my $taxDB = Bio::LITE::Taxonomy::NCBI-> new (
                                              db=>"NCBI",
                                              names=>
-                                             "/data/db/taxonomy/names.dmp",
+                                             "/SAN/db/taxonomy/names.dmp",
                                              nodes=>
-                                             "/data/db/taxonomy/nodes.dmp",
+                                             "/SAN/db/taxonomy/nodes.dmp",
                                             );
 
 my $cmd = "blast_formatter -archive ".$ARGV[0].
@@ -26,7 +26,7 @@ my @blast = `$cmd`;
 
 print STDERR "obtaining species, genus, family, phylum, kingdom and superkingdom\n\n";
 
-print  "query,subject,bitscore,taxid,pident,length,substart,subend,species,genus,family,phylum,kingdom,superkingdom\n";
+print  "query,subject,bitscore,taxid,pident,length,substart,subend,species,genus,family,order,class,phylum,kingdom,superkingdom\n";
 
 foreach (@blast) {
   next if /#/;
@@ -35,10 +35,12 @@ foreach (@blast) {
   my $species = $taxDB->get_term_at_level($blt[3],"species");
   my $genus = $taxDB->get_term_at_level($blt[3],"genus");
   my $family = $taxDB->get_term_at_level($blt[3],"family");
+  my $order = $taxDB->get_term_at_level($blt[3],"order");
+  my $class = $taxDB->get_term_at_level($blt[3],"class");
   my $phylum = $taxDB->get_term_at_level($blt[3],"phylum");
   my $kingdom = $taxDB->get_term_at_level($blt[3],"kingdom");
   my $superkingdom = $taxDB->get_term_at_level($blt[3],"superkingdom");
 
-  print "$blt[0],$blt[1],$blt[2],$blt[3],$blt[4],$blt[5],$blt[6],$blt[7],$species,$genus,$family,$phylum,$kingdom,$superkingdom\n";
+  print "$blt[0],$blt[1],$blt[2],$blt[3],$blt[4],$blt[5],$blt[6],$blt[7],$species,$genus,$family,$order,$class,$phylum,$kingdom,$superkingdom\n";
 }
 
