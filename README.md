@@ -1,5 +1,8 @@
 # AA_Metabarcoding
 
+
+[![DOI](https://zenodo.org/badge/67146407.svg)](https://zenodo.org/badge/latestdoi/67146407)
+
 An overview of a metabarcoding pipeline for multiple marker data from
 the Fluidigm Access Array. The present version is intended for a
 overview of the preliminary processing of data. Code can be reviewed
