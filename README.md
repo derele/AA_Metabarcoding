@@ -1,5 +1,11 @@
 # AA_Metabarcoding
 
+An overview of a metabarcoding pipeline for multiple marker data from
+the Fluidigm Access Array. The present version is intended for a
+overview of the preliminary processing of data. Code can be reviewed
+in the /scripts and /R folders. The processing is not reproducible at
+the present version as raw data files cannot be accessed (yet). 
+
 ## Preprocessing
 
 ### stratify the data into amplicons and samples

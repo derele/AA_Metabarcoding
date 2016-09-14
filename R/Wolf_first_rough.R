@@ -52,7 +52,6 @@ for(i in 1:nrow(OTUs)){
     OTUs[i, out.z(OTUs[i,])] <- 0
 }
 
-## Maybe much harder just kill when away from the mean/median?
 
 ######## Analyse just the READ counts per amplicon and sample #####
 SUM.amp <- do.call(cbind, by(OTUs, amplicon, colSums))
