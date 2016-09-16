@@ -168,7 +168,7 @@ TAX <- TAX[!TAX$phylum%in%c("Cnidaria", "Porifera",
                             ) ,]
 
 ## ## now use only best hit
-## TAX <- TAX[!duplicated(TAX$query), ]
+TAX.best <- TAX[!duplicated(TAX$query), ]
 ## tail(TAX[order(TAX$amplicon), ])
 
 ## table(TAX$phylum)
@@ -204,3 +204,25 @@ pheatmap(log10(baz+1),
 dev.off()
 
 
+### preliminary single species
+best.merge <- merge(TAX.best, OTUs, by.x="query", by.y=0)
+
+
+## Ancylostoma
+get.level <- function(regex, level="species"){
+    subs <- best.merge[grepl(regex, best.merge[, level]), ]
+    subs <- by(subs[,18:ncol(subs)], as.character(subs[, level]), colSums)
+    do.call(rbind, subs)
+}
+
+
+teaser <- rbind(get.level("Ancylo"), 
+                get.level("isospora"),
+                get.level("Sarcocystis buffalonis|Sarcocystis .*canis$"))
+
+
+write.table(teaser, "~/Dropbox/Hyena_2ndDataset_teaser_reps.csv", sep=",")
+
+write.table(mean.columns(teaser), "~/Dropbox/Hyena_2ndDataset_teaser_merged.csv", sep=",")
+
+write.table(rownames(mean.columns(teaser)), "~/Dropbox/Hyena_lables.txt")
