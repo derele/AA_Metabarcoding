@@ -65,5 +65,22 @@ derepFs <- derepMultiSampleFastq(filtFs,
 derepRs <- derepMultiSampleFastq(filtRs,
                                  "RECORD:(.*?)_L001.*", verbose=TRUE)
 
+
+sample.names <- grep("R1", list.files(tempdir()), value=TRUE)
+                            
+names(derepFs) <- sample.names
+names(derepRs) <- sample.names
+
 dadaFs <- dada(derepFs, err=NULL, selfConsist = TRUE)
 dadaRs <- dada(derepRs, err=NULL, selfConsist = TRUE)
+
+mergers <- mergePairs(dadaFs, derepFs, dadaRs, derepRs, verbose=TRUE,
+                      returnRejects=TRUE, justConcatenate=TRUE)
+
+seqtab <- makeSequenceTable(mergers)
+
+seqtab.nochim <- removeBimeraDenovo(seqtab, verbose=TRUE)
+
+taxa <- assignTaxonomy(seqtab.nochim, "/SAN/db/RDP/rdp_train_set_14.fa.gz")
+colnames(taxa) <- c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus")
+

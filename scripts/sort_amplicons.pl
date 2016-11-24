@@ -6,6 +6,7 @@ use Data::Dumper;
 ## Changelog
 ##  17.3.2015: Version V2 for testing by Ilan
 ##  18.3.2015: Version V2.1 for sorting full amplicons in seperate files
+##  22.10.2016: Version None added to the AA_Metabarcoding git tracking
 
 die "USAGE: sort_amplicons.pl primer_csv Read1_file Read2_file output_folder\n" unless scalar(@ARGV) == 4;
 
@@ -47,26 +48,7 @@ foreach  my $id (keys %FQ) {
                    -length($seqALL{$primerX}{$primerY}{$id}{seqF}));
           $seqALL{$primerX}{$primerY}{$id}{qualR} = 
             substr($seqALL{$primerX}{$primerY}{$id}{qualR}, 
-                   -length($seqALL{$primerX}{$primerY}{$id}{seqR}));; 
-          ## from here: full amps sorting, still way to complicated...
-          my $RCrev=revComp($primerY);
-          if ($seqALL{$primerX}{$primerY}{$id}{seqF} =~ s/$RCrev.*//){
-            my $FCrev=revComp($primerX);
-            $seqALL{$primerX}{$primerY}{$id}{seqR} =~ s/$FCrev.*//;
-            ## truncate quality lines accordingly
-            $seqALL{$primerX}{$primerY}{$id}{qualF} = 
-              substr($seqALL{$primerX}{$primerY}{$id}{qualF},0,
-                     length($seqALL{$primerX}{$primerY}{$id}{seqF}));
-            $seqALL{$primerX}{$primerY}{$id}{qualR} = 
-              substr($seqALL{$primerX}{$primerY}{$id}{qualR},0,
-                     length($seqALL{$primerX}{$primerY}{$id}{seqR}));
-            ## add a special identifier sequences
-            $seqALL{$primerX.":full"}{$primerY.":full"}{$id} = 
-              $seqALL{$primerX}{$primerY}{$id};
-            ## delete the original
-            delete ($seqALL{$primerX}{$primerY}{$id});
-          }
-          push @match, $id; 
+                   -length($seqALL{$primerX}{$primerY}{$id}{seqR}));
         }
       }
     }
@@ -239,9 +221,6 @@ sub primerSeq2Name{
     if ( $PrF eq $S ) {
       return ($$nameF[$i]);     # everything else 
     } 
-    elsif ($PrF.":full" eq $S) {
-      return ($$nameF[$i].":full");
-    }
   }
   for (my $i=0; $i<scalar(@$nameR); $i++ ) {
     my $PrR = $$primerR[$i];
@@ -249,9 +228,6 @@ sub primerSeq2Name{
     if ($PrR eq $S) {
       return ($$nameR[$i]);
     } 
-    elsif ($PrR.":full" eq $S) {
-      return ($$nameR[$i].":full");
-    }
   }
   return ("fail");              # if we get to here we have no primer
 }

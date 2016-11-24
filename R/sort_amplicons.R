@@ -108,3 +108,4 @@ primer.to.regex <- function(primer){
     paste(regex.l, collapse="")
 }
 
+

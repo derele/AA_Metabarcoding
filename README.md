@@ -36,3 +36,5 @@ scripts/combine_and_lable_samples.pl *R2.fastq.gz > ALL_R2.fastq
 #### get the taxonomy based on these blasts
 `scripts/blast2alltax_outfmt11.pl ALL_outs_vs_SilvaEuk.asn1 > ALL_outs.taxtable`
 
+## or instead based on a Megan lca analysis 
+/tools/MEGAN6/tools/blast2lca  -i ALL_outs_vs_NT.xml -m BlastN -tn false -a2t /SAN/db/MEGAN/nucl-acc2taxid-August2016.abin -mid 97 -o ALL_outs_vs_NT.megantax

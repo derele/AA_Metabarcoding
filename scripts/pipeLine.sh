@@ -6,9 +6,9 @@ pfix=$(basename $1)
 usearch -fastq_filter $1 -fastq_trunclen 250 -fastq_maxee 0.5 -fastq_truncqual 15 -fastaout $pfix.filtered.fasta 
 
 ## get a "sample identifier" to start right after the >
+sed -i -e '/^>RECORD/ s/-/_/ig' $pfix.filtered.fasta
+sed -i -e  '/^>RECORD/ s/_L001_/;/ig' $pfix.filtered.fasta
 sed -i 's/>RECORD:/>/ig' $pfix.filtered.fasta
-sed -i 's/-/_/ig' $pfix.filtered.fasta
-sed -i 's/_L001_/;/ig' $pfix.filtered.fasta
 
 ## dereplicate
 usearch -derep_fulllength $pfix.filtered.fasta -fastaout $pfix.uniques.fasta -sizeout 
