@@ -1,5 +1,5 @@
 ## library(devtools)
-devtools::install_github("derele/MultiAmplicon")
+## devtools::install_github("derele/MultiAmplicon")
 
 library(MultiAmplicon)
 library(dada2)
@@ -10,6 +10,10 @@ library(reshape)
 library(DECIPHER)
 library(parallel)
 library(phangorn)
+library(plyr)
+library(gridExtra)
+library(nlme)
+library(structSSI)
 
 a.files <- list.files(path="/SAN/Metabarcoding/Hyena/second/fastq_raw/",
                       pattern=".fastq.gz", full.names=TRUE)
@@ -165,6 +169,9 @@ tSTnoC <- lapply(STnoC, function(x) as.data.frame(t(x)))
 all.otu.counts <- bind_rows(tSTnoC)
 all.otu.counts[is.na(all.otu.counts)] <- 0
 
+
+## this figure is disturbing... see what happened!
+## is it just the "data crunching" above?
 pdf("figures/full_otu_dadaMap.pdf", width=15, height=15)
 pheatmap(log10(all.otu.counts+.1))
 dev.off()
@@ -186,8 +193,10 @@ get.tree.from.alignment <- function (alignment){
     fit <- pml(treeNJ, data=phang.align)
     ## negative edges length changed to 0!
     fitGTR <- update(fit, k=4, inv=0.2)
-    fitGTR <- optim.pml(fitGTR, model="GTR", optInv=TRUE, optGamma=TRUE,
-                        rearrangement = "stochastic", control = pml.control(trace = 0))
+    fitGTR <- optim.pml(fitGTR, model="GTR",
+                        optInv=TRUE, optGamma=TRUE,
+                        rearrangement = "stochastic",
+                        control = pml.control(trace = 0))
     return(fitGTR)
 }
 
@@ -211,13 +220,13 @@ primer.overview$Row.names <- NULL
 ## Or load at this point for complete data up to here
 ## load("/home/ele/Sunday.Rdata")
 
-
 ##### TAXONOMY assignment
 assign.full.tax <- function(seqtab){
     seqs <- getSequences(seqtab)
-    taxa <- assignTaxonomy(seqs, "/SAN/db/RDP/Silva_123/SILVA_123_dada2.fasta")
-    taxaS <- addSpecies(taxa, "/SAN/db/RDP/silva_species_assignment_v123.fa.gz", verbose=TRUE)
-    return(taxaS)
+    taxa <- assignTaxonomy(seqs, "/SAN/db/RDP/Silva_123/SILVA_123_dada2_exp.fasta")
+    return(taxa)
+    ## taxaS <- addSpecies(taxa, "/SAN/db/RDP/silva_species_assignment_v123.fa.gz", verbose=TRUE)
+    ## return(taxaS)
 }
 
 set.seed(100) # Initialize random number generator for reproducibility
@@ -231,7 +240,6 @@ lapply(tax.l, function (x) {
 })
 
 ## how many are assigned to Genus level
-
 tax.tab <- sapply(c("Phylum", "Class", "Order", "Family", "Genus"), function (y){
     sapply(tax.l, function (x, level=y) {
         ## not just reporting the level above and not NA
@@ -240,7 +248,7 @@ tax.tab <- sapply(c("Phylum", "Class", "Order", "Family", "Genus"), function (y)
     })
 })
 
-rownames(tax.tab) <- names(ps.l)
+rownames(tax.tab) <- names(STnoC)
 tax.tab[order(tax.tab[, "Genus"]), ]
 
 primer.overview <- merge(primer.overview, tax.tab, by=0)
@@ -293,42 +301,112 @@ ps.l <- lapply(seq_along(sub.df.l), function (i) {
     return(ps)
 })
 
-names(ps.l) <- names(sub.df.l)
+names(ps.l) <- names(STnoC)
 
-Shannon.l <- lapply(ps.l, estimate_richness, measures="Shannon")
+################# From here Phyloseq ######################
 
-Shannon.sample.l <- lapply(seq_along(ps.l), function(i){
-    merge(sample_data(ps.l[[i]]), Shannon.l[[i]], by=0)
+## inspect the reported phyla
+lapply(ps.l, function(ps){
+    table(tax_table(ps)[, "Phylum"], exclude = NULL)
 })
 
 
-sex.Shannon <- lapply(Shannon.sample.l, function(x){
-    t.test(Shannon ~ sex, data=x)$p.value
+## remove otus without phylum level reported
+SSps.l <- lapply(ps.l, function (ps){
+    subset_taxa(ps, !is.na(Phylum) &
+                    !Phylum %in% c("", "undef", "uncharacterized"))
 })
 
 
-age.Shannon <- lapply(Shannon.sample.l, function(x){
-    t.test(Shannon ~ age, data=x)$p.value
+## Are there phyla that are comprised of mostly low-prevalence
+## features? Compute the total and average prevalences of the features
+## in each phylum.
+prevdf.l <- lapply(SSps.l, function (ps){
+   prev <- apply(X = otu_table(ps),
+                 MARGIN = ifelse(taxa_are_rows(ps), yes = 1, no = 2),
+                 FUN = function(x){sum(x > 0)})
+   prevTax <- data.frame(Prevalence = prev, 
+                         TotalAbundance = taxa_sums(ps),
+                         tax_table(ps))
+   return(prevTax)
 })
 
 
-rank.Shannon <- lapply(Shannon.sample.l, function(x){
-    t.test(Shannon ~ rank, data=x)$p.value
+lapply(prevdf.l, function(prevTax){
+    allAbu<- sum(prevTax$TotalAbundance)
+    plyr::ddply(prevTax, "Phylum", function(df1){
+        cbind(meanPrevalence=mean(df1$Prevalence),
+              maxPrevalence=max(df1$Prevalence),
+              TotAbund=sum(df1$TotalAbundance),
+              PercAbund=round((sum(df1$TotalAbundance)/allAbu)*100, 3)
+              )
+    })
 })
 
 
-rep.Shannon <- lapply(Shannon.sample.l, function(x){
-    t.test(Shannon ~ rep, data=x)$p.value
+## invest a bit more time here to look through those
+
+## exclude everything that apperars in less than prevalenceTreshold
+## samples (here 2) samples
+prevalenceThreshold <- 2
+
+## 
+TSps.l <- lapply(seq_along(prevdf.l), function(i){
+    keep <- rownames(prevdf.l[[i]])[(prevdf.l[[i]]$Prevalence >= prevalenceThreshold)]
+    prune_taxa(keep, SSps.l[[i]])
 })
 
-Shannon.df <- cbind(sex=unlist(sex.Shannon),
-                    age=unlist(age.Shannon),
-                    rank=unlist(rank.Shannon),
-                    rep=unlist(rep.Shannon))
 
+Gen.l <- mclapply(TSps.l, function (ps) {
+    tax_glom(ps, "Genus", NArm = TRUE)},
+    mc.cores=20)
+
+Dist.l <- mclapply(TSps.l, function (ps) {
+    tip_glom(ps, h=0.1)},
+    mc.cores=20)
+
+get.num.taxa <- function(x, level="Genus"){
+    length(get_taxa_unique(x, taxonomic.rank = level))
+}
+
+cbind(raw = lapply(ps.l, get.num.taxa),
+      wPhylum = lapply(SSps.l, get.num.taxa),
+      wPrev = lapply(TSps.l, get.num.taxa),
+      GenAgg = lapply(Gen.l, get.num.taxa),
+      DistAgg = lapply(Dist.l, get.num.taxa)
+      )
+
+## the latter are so few that we can  have a direct look:
+lapply(Gen.l, function(x) get_taxa_unique(x, taxonomic.rank = "Genus"))
+
+lapply(Dist.l, function(x) get_taxa_unique(x, taxonomic.rank = "Genus"))
+
+get.all.shannon <- function(ps){
+    Shan <- estimate_richness(ps, measures="Shannon")
+    x <- merge(sample_data(ps), Shan, by=0)
+    s <- t.test(Shannon ~ sex, data=x)$p.value
+    a <- t.test(Shannon ~ age, data=x)$p.value
+    r <- t.test(Shannon ~ rank, data=x)$p.value
+    n <- t.test(Shannon ~ rep, data=x)$p.value
+    Shannon.df <- cbind(sex=s, age=a,
+                        rank=r, rep=n)
+    return(Shannon.df)
+}
+
+
+do.call(rbind, lapply(ps.l, get.all.shannon))
+do.call(rbind, lapply(SSps.l, get.all.shannon))
+do.call(rbind, lapply(TSps.l, get.all.shannon))
+do.call(rbind, lapply(Gen.l, get.all.shannon))
+do.call(rbind, lapply(Dist.l, get.all.shannon))
+
+
+Shannon.df <- do.call(rbind, lapply(SSps.l, get.all.shannon))
 rownames(Shannon.df) <- names(ps.l)
 
 annotation <- merge(primer.overview, Shannon.df, by=0)
+rownames(annotation) <- annotation$Row.names
+annotation$Row.names <- NULL
 annotation$is.16.S <- ifelse(grepl("ADM|ACM|Klin", annotation$pRname), "16S", "18S")
 
 pdf("figures/shannon.pdf", onefile=FALSE)
@@ -343,30 +421,8 @@ pheatmap(Shannon.df, cluster_cols=FALSE, cluster_rows=TRUE,
 dev.off()
 
 
-primer.plot <- lapply(ps.l, function(x){
-    R18S <- x
-    R18S <- filter_taxa(R18S, function(x) mean(x)>0.2, TRUE)
-    UF <- UniFrac(R18S, weighted=TRUE)
-    UF[is.na(UF)] <- 0
-    UFO <- ordinate(R18S, method="PCoA", distance=UF)
-    UFOplot <- plot_ordination(R18S, UFO,
-                               "samples", color="rank",
-                               label="Subject.ids", axes=1:2) +
-        ##    geom_point(size=5) +
-        geom_path() +
-        scale_colour_hue(guide = FALSE) +
-        theme_bw()
-    return(UFOplot)
-})
-
-
-library(gridExtra)
-
-pdf("figures/UFO.pdf")
-do.call("grid.arrange", c(primer.plot, ncol=3))
-dev.off()
-
-ps.bak1 <- ps.l[rownames(annotation)[annotation$is.16.S%in%"16S"]][[1]]
+## one example of one bacterial amplicon
+ps.bak1 <- ps.l[[3]]
 
 pdf("figures/Bacteria_richnesSex.pdf", width=14, height=8)
 plot_richness(ps.bak1, x="sex") + theme_bw()  + geom_boxplot()
@@ -385,56 +441,342 @@ plot_richness(ps.bak1, x="pack") + theme_bw()  + geom_boxplot()
 dev.off()
 
 
-############################### BARCHARTS
-top60 <- names(sort(taxa_sums(ps.l[[1]]), decreasing=TRUE))[1:60]
-ps.top60 <- transform_sample_counts(ps.l[[1]], function(OTU) OTU/sum(OTU))
-ps.top60 <- prune_taxa(top60, ps.top60)
+all.div.plots <- function(ps, what, annotation){
+ pl <- plot_richness(ps, x=what, measures="Shannon") +
+     theme_bw()  +
+     geom_violin() +
+     ggtitle(annotation$pRnames)
+ if(annotation$is.16.S%in%"18S"){
+     p <- pl + theme(strip.background = element_rect(fill="orange"))
+ } else{
+     p <- pl + theme(strip.background = element_rect(fill="blue"))
+ }
+ if(as.numeric(as.character(annotation[, what]))<0.01){
+     p <- p + theme(panel.background = element_rect(fill = "palevioletred2"))
+ } else {
+     p
+ }
+}
 
-## plot_bar(ps.top20, x="rep", fill="Family") + facet_wrap(~V2, scales="free_x")
-
-## plot_bar(ps.top20, x="V1", fill="Family") + facet_wrap(~V2, scales="free_x")
-
-## plot_bar(ps.top20, x="V2", fill="Family") + facet_wrap(~V2, scales="free_x")
-
-
-###########################################
-
-enterotype <- subset_taxa(ps, Genus!= "-1")
-
-### setting up distance methods to be tested
-
-dist_methods <- unlist(distanceMethodList)
-
-## 1:3 require tree
-## dist_methods <- dist_methods[-(1:3)]
-
-dist_methods <- dist_methods[-which(dist_methods=="ANY")]
-plist <- vector("list", length(dist_methods))
-names(plist) <- dist_methods
-
-iDist <- distance(ps.l[[1]], method=dist_methods[[1]])
-iMDS  <- ordinate(ps.l[[1]], "MDS", distance=iDist)
+pdf("figures/richness_Rank.pdf", width=60, height=20)
+do.call("grid.arrange",
+        c(lapply(seq_along(ps.l), function (i) {
+            all.div.plots(ps.l[[i]], "rank", annotation[i,])
+        }),
+        ncol=10))
+dev.off()
 
 
+pdf("figures/richness_Age.pdf", width=60, height=20)
+do.call("grid.arrange",
+        c(lapply(seq_along(ps.l), function (i) {
+            all.div.plots(ps.l[[i]], "age", annotation[i,])
+        }),
+        ncol=10))
+dev.off()
 
-for( i in dist_methods[c(4, 5, 6, 11, 16, 22)] ){ # other give error
-    ## Calculate distance matrix
-    iDist <- distance(enterotype, method=i)
-    ## Calculate ordination
-    iMDS  <- ordinate(enterotype, "MDS", distance=iDist)
-    ## Make plot
-    ## Don't carry over previous plot (if error, p will be blank)
-    p <- NULL
-    ## Create plot, store as temp variable, p
-    p <- plot_ordination(enterotype, iMDS, color="age", shape="rank")
-    ## Add title to each plot
-    p <- p + ggtitle(paste("MDS using distance method ", i, sep=""))
-                                        # Save the graphic to file.
-    plist[[i]] <- p
+
+
+get.female.adult.subset <- function(ps){
+    dat <- sample_data(ps)
+    keep <- dat$sex%in%"Female" & dat$age%in%"Adult"
+    subset_samples(ps, keep)
+}
+
+FAps.l <- lapply(ps.l, get.female.adult.subset)
+FASSps.l <- lapply(SSps.l, get.female.adult.subset)
+FATSps.l <- lapply(TSps.l, get.female.adult.subset)
+FAGen.l <- lapply(Gen.l, get.female.adult.subset)
+FADist.l <- lapply(Dist.l, get.female.adult.subset)
+
+
+pdf("figures/FArichness_Rank.pdf", width=60, height=20)
+do.call("grid.arrange",
+        c(lapply(seq_along(FASSps.l), function (i) {
+            all.div.plots(FASSps.l[[i]], "rank", annotation[i,])
+        }),
+        ncol=10))
+dev.off()
+
+
+get.shannon.lme <- function(ps){
+    Shan <- estimate_richness(ps, measures="Shannon")
+    x <- merge(sample_data(ps), Shan, by=0)
+    test <- lme(fixed = Shannon ~ rank + pack, data = x,
+                random = ~ 1 | Subject.ids)
+    s.test <- summary(test)
+    r.effect <- s.test$tTable["ranklow", "Value"]
+    r.pval <- s.test$tTable["ranklow", "p-value"]
+    a.test <- anova(test)
+    c.pval <- a.test$"p-value"[[3]]
+    Shannon.df <- cbind(r.low.effect=r.effect, r.pval=r.pval,
+                        c.pval=c.pval)
+    return(Shannon.df)
 }
 
 
+do.call(rbind, lapply(FAps.l, get.shannon.lme))
+do.call(rbind, lapply(FASSps.l, get.shannon.lme))
+do.call(rbind, lapply(FATSps.l, get.shannon.lme))
+do.call(rbind, lapply(FAGen.l, get.shannon.lme))
+do.call(rbind, lapply(FADist.l, get.shannon.lme))
+
+Shannon.df <- do.call(rbind, lapply(FAps.l, get.shannon.lme))
+rownames(Shannon.df) <- names(ps.l)
+
+annotation <- merge(primer.overview, Shannon.df, by=0)
+rownames(annotation) <- annotation$Row.names
+annotation$Row.names <- NULL
+annotation$is.16.S <- ifelse(grepl("ADM|ACM|Klin", annotation$pRname), "16S", "18S")
+
+lme.div.plots <- function(ps, annotation){
+ pl <- plot_richness(ps, x="rank", measures="Shannon") +
+     theme_bw()  +
+     geom_boxplot() +
+     ggtitle(annotation$pRnames)
+ if(annotation$is.16.S%in%"18S"){
+     p <- pl + theme(strip.background = element_rect(fill="orange"))
+ } else{
+     p <- pl + theme(strip.background = element_rect(fill="blue"))
+ }
+ if(as.numeric(as.character(annotation$r.pval))<0.05){
+     p <- p + theme(panel.background = element_rect(fill = "palevioletred2"))
+ } else {
+     p
+ }
+}
+
+pdf("figures/LMErichness_Rank.pdf", width=60, height=20)
+do.call("grid.arrange",
+        c(lapply(seq_along(FAps.l), function (i) {
+            lme.div.plots(FAps.l[[i]], annotation[i,])
+        }),
+        ncol=10))
+dev.off()
+
+lapply(FAps.l,  function(ps){
+    tab <- table(tax_table(ps)[,2])
+    tab[order(tab)]
+})
 
 
+Para.ps.l <- lapply(FAps.l, function(ps){
+    tryCatch(
+        subset_taxa(ps, Phylum %in% c("Apicomplexa", "Platyhelminthes",
+                                      "Nematoda")),
+        error = function(e) NULL)
+})
+
+do.call(rbind, lapply(Para.ps.l, function(ps){
+    tryCatch(get.shannon.lme(ps),
+             error = function (e) NA)
+}))
 
 
+pdf("figures/Parasite_richnesRank43.pdf", width=14, height=8)
+plot_richness(Para.ps.l[[43]], x="rank") + theme_bw()  + geom_boxplot()
+dev.off()
+
+pdf("figures/Parasite_richnesRank45.pdf", width=14, height=8)
+plot_richness(Para.ps.l[[45]], x="rank") + theme_bw()  + geom_boxplot()
+dev.off()
+
+NonPrey.ps.l <- lapply(FAps.l, function(ps){
+    tryCatch(
+        subset_taxa(ps, !Phylum %in% c("Chordata", "Vertebrata", 
+        "Chlorophyta_ph", "Phragmoplastophyta",
+        "Streptophyta", "Chlorophyta", "Arthropoda",
+        "", "undef")),
+        error = function(e) NULL)
+})
+
+do.call(rbind, lapply(NonPrey.ps.l, function(ps){
+    tryCatch(get.shannon.lme(ps),
+             error = function (e) NA)
+}))
+
+Prey.ps.l <- lapply(FAps.l, function(ps){
+    tryCatch(
+        subset_taxa(ps, Phylum %in% c("Chordata", "Vertebrata")),
+        error = function(e) NULL)
+})
+
+do.call(rbind, lapply(Prey.ps.l, function(ps){
+    tryCatch(get.shannon.lme(ps),
+             error = function (e) NA)
+}))
+
+sapply(get_taxa_unique(FAps.l[[43]], "Phylum"), function (p) {
+    p <- "Apicomplexa"
+    p.sub <- subset_taxa(FAps.l[[43]], Phylum%in%"Apicomplexa")
+    sum(otu_table(p.sub))
+})
+
+
+################### ORDINATIONS ##################
+
+## log transformaitons on sample counts 
+## lets go direclty for the subsetted data
+log.ps.l <- lapply(FAps.l, transform_sample_counts, function(x) log(1 + x))
+log.SSps.l <- lapply(FASSps.l, transform_sample_counts, function(x) log(1 + x))
+log.TSps.l <- lapply(FATSps.l, transform_sample_counts, function(x) log(1 + x))
+log.Gen.l <- lapply(FAGen.l, transform_sample_counts, function(x) log(1 + x))
+log.Dist.l <- lapply(FADist.l, transform_sample_counts, function(x) log(1 + x))
+
+## some of the amplicons give errors
+ord.works <- c(1:3, 5:10, 12:18, 20:30, 32, 34:36, 40, 41, 43:48)
+
+## for the moment only interested in 16s
+amp.16S <- which(annotation$is.16.S%in%"16S")
+# for  4 it does not work somehow...
+amp.16S <- c(3, 5,13)
+
+
+get.ord.plot <- function(ps, meth = "MDS", dist = "bray"){
+    or <- ordinate(ps, method = meth, distance = dist)
+    evals <- or$eig
+    plot_ordination(ps, or, color = "rank",
+                    shape = "pack") +
+        theme_bw()
+}
+
+logBC.l <- lapply(log.ps.l[amp.16S], get.ord.plot)
+logSSBC.l <- lapply(log.SSps.l[amp.16S], get.ord.plot)
+logTSBC.l <- lapply(log.TSps.l[amp.16S], get.ord.plot)
+logGenBC.l <- lapply(log.Gen.l[amp.16S], get.ord.plot)
+logDistBC.l <- lapply(log.Dist.l[amp.16S], get.ord.plot)
+
+pdf("figures/ordinate1.pdf", width=15, height=7)
+do.call("grid.arrange", c(logBC.l, ncol=2))
+dev.off()
+
+pdf("figures/ordinate2.pdf", width=15, height=7)
+do.call("grid.arrange", c(logSSBC.l, ncol=2))
+dev.off()
+
+pdf("figures/ordinate3.pdf", width=15, height=7)
+do.call("grid.arrange", c(logTSBC.l, ncol=2))
+dev.off()
+
+pdf("figures/ordinate4.pdf", width=15, height=7)
+do.call("grid.arrange", c(logGenBC.l, ncol=2))
+dev.off()
+
+pdf("figures/ordinate5.pdf", width=15, height=7)
+do.call("grid.arrange", c(logDistBC.l, ncol=2))
+dev.off()
+
+logWUF.l <- lapply(log.ps.l[amp.16S], get.ord.plot,
+                   meth="PCoA" , dist="wunifrac")
+
+logSSWUF.l <- lapply(log.SSps.l[amp.16S], get.ord.plot,
+                     meth="PCoA" , dist="wunifrac")
+
+logTSWUF.l <- lapply(log.TSps.l[amp.16S], get.ord.plot,
+                     meth="PCoA" , dist="wunifrac")
+
+logGenWUF.l <- lapply(log.Gen.l[amp.16S], get.ord.plot,
+                      meth="PCoA" , dist="wunifrac")
+
+logDistWUF.l <- lapply(log.Dist.l[amp.16S], get.ord.plot,
+                       meth="PCoA" , dist="wunifrac")
+
+pdf("figures/ordinate6.pdf", width=15, height=7)
+do.call("grid.arrange", c(logWUF.l, ncol=2))
+dev.off()
+
+pdf("figures/ordinate7.pdf", width=15, height=7)
+do.call("grid.arrange", c(logSSWUF.l, ncol=2))
+dev.off()
+
+pdf("figures/ordinate8.pdf", width=15, height=7)
+do.call("grid.arrange", c(logTSWUF.l, ncol=2))
+dev.off()
+
+pdf("figures/ordinate9.pdf", width=15, height=7)
+do.call("grid.arrange", c(logGenWUF.l, ncol=2))
+dev.off()
+
+pdf("figures/ordinate10.pdf", width=15, height=7)
+do.call("grid.arrange", c(logDistWUF.l, ncol=2))
+dev.off()
+
+
+################## hierarchical testing ###############
+get.hier.test <- function(ps){
+    ## ## Playing with DEseq2
+    ## ps_dds <-  phyloseq_to_deseq2(ps, ~ rank + pack)
+    ## ts <- counts(ps_dds)
+    ## geoMeans <- apply(ts, 1, function(row) {
+    ##     if (all(row == 0)) 0 else exp(mean(log(row[row != 0])))
+    ## })
+    ## ps_dds <- estimateSizeFactors(ps_dds, geoMeans=geoMeans)
+    ## ps_dds <- estimateDispersions(ps_dds)
+    ## abund <- getVarianceStabilizedData(ps_dds)
+    abund <- t(otu_table(ps))
+    short_names <- make.names(substr(rownames(abund), 1, 5),
+                              unique=TRUE)
+    rownames(abund) <- short_names
+    el <- phy_tree(ps)$edge
+    el0 <- el
+    el0 <- el0[nrow(el):1, ]
+    el_names <- c(short_names, seq_len(phy_tree(ps)$Nnode))
+    el[, 1] <- el_names[el0[, 1]]
+    el[, 2] <- el_names[as.numeric(el0[, 2])]
+    unadj_p <- treePValues(el, abund, sample_data(ps)$rank)
+    ## Warning: essentially perfect fit: summary may be unreliable
+    hfdr_res <- hFDR.adjust(unadj_p, el, 0.99)
+    tax <- data.frame(tax_table(ps)[, c("Family", "Genus")])
+    tax$seq <- short_names
+    hfdr_res@p.vals$seq <- rownames(hfdr_res@p.vals)
+    lj <- left_join(tax, hfdr_res@p.vals)
+    head(arrange(lj, adjp), n=50)
+}
+
+## for a full test
+##
+## XYZ <- mclapply(log.ps.l, tryCatch(get.hier.test, error = function
+##                 (e) NA), mc.cores=20)
+##
+## which might not make sense as we are interested in things with a
+## clear annotation here anyways
+
+tests.gen.coll <- mclapply(log.Gen.l, tryCatch(get.hier.test, error = function (e) NA),
+                           mc.cores=20)
+
+lapply(tests.gen.coll, function (x) x[x$adjp<0.05& !is.na(x$adjp),])
+
+## ## Not so
+## [[17]]
+##                      Family                        Genus      seq       unadjp        adjp
+## 1           Eggerthellaceae                      Slackia CAGTG.24 0.0001681410 0.000336282
+## 2       Erysipelotrichaceae  Erysipelotrichaceae_UCG-001  CAGTA.6 0.0005669904 0.001133981
+## 3     Peptostreptococcaceae                   Romboutsia CAGTG.30 0.0067334885 0.013466977
+## 4 Bacteroidales_S24-7_group Bacteroidales_S24-7_group_ge CAGTG.38 0.0135579717 0.027115943
+## 5       Erysipelotrichaceae  Erysipelotrichaceae_UCG-004  CAGTA.7 0.0159865623 0.031973125
+
+## Slackia:
+## Couple of papers, among them: Characterization of Slackia exigua
+## isolated from human wound infections, including abscesses of
+## intestinal origin
+
+## Erysipelotrichaceae: 
+## Wikipedia Erysipelotrichia are a class of bacteria of the phylum
+## Firmicutes. Species of this class are known to be common in the gut
+## microbiome, as they have been isolated from swine manure [1] and
+## increase in composition of the mouse gut microbiome for mice
+## switched to diets high in fat.[2]
+
+## Romboutsia
+##  bacterium isolated from the right human colon by colonoscopy in a
+## 63-year-old French man with severe anaemia with melaena.
+
+## Bacteroidales_S24-7:
+## representatives constitute a substantial component of the murine
+## gut microbiota, as well as being present within the human g
+
+
+tests.dist.coll <- mclapply(log.Dist.l, tryCatch(get.hier.test, error = function (e) NA),
+                            mc.cores=20)
+
+lapply(tests.dist.coll, function (x) x[x$adjp<0.05& !is.na(x$adjp),])

@@ -96,10 +96,8 @@ tax.write <- tax.write[order(tax.write$id),]
 ##             file="/SAN/db/RDP/Silva_123/silva.nr_v123.full.tax",
 ##             sep="\t", row.names=F, quote=F, col.names=F)
 
-
 sids <- strsplit(tax.write$taxid, "\\.")
 tax.write$seqacc <- unlist(lapply(sids, "[", 1))
-
 
 library(Biostrings)
 
@@ -117,6 +115,47 @@ FAS.taxed <- FAS.taxed[match(tax.write$seqacc, nnames.taxed)]
 names(FAS.taxed) <- tax.write$taxout
 FAS.taxed <- DNAStringSet(FAS.taxed)
 
-Biostrings::writeXStringSet(FAS.taxed, "/SAN/db/RDP/Silva_123/SILVA_123_dada2.fasta", format="fasta")
+## This would be a very first quite "incomplete" database.
+## Biostrings::writeXStringSet(FAS.taxed, "/SAN/db/RDP/Silva_123/SILVA_123_dada2.fasta", format="fasta")
 
 
+FUZZ.tax <- read.csv("/SAN/Metabarcoding/Hyena/second/dada.taxtable",
+                     as.is=TRUE)
+## first see that we have them more then once
+FUZZ.tax <- FUZZ.tax[duplicated(FUZZ.tax$subject), ]
+## then exclude duplicates
+FUZZ.tax <- FUZZ.tax[!duplicated(FUZZ.tax$subject), ]
+## then exclude undef at genus level
+FUZZ.tax <- FUZZ.tax[!grepl("undef", FUZZ.tax$genus), ]
+
+## write.table(FUZZ.tax$subject,
+##            "/SAN/Metabarcoding/Hyena/second/selected_dada_nr_hits.acc",
+##            row.names=FALSE, col.names=FALSE, quote=FALSE)
+
+## now run blastcmd to get the fasta file blastdbcmd -db
+## /SAN/db/blastdb/nt/nt -entry_batch selected_dada_nr_hits.acc
+## -outfmt '%a%s' > dada_nr_hits.fasta
+## little bit of formatting magic
+## tr '|' '\n' < dada_nr_hits.fasta > tmp; mv tmp dada_nr_hits.fasta
+
+FUZZ <- Biostrings::readDNAStringSet("/SAN/Metabarcoding/Hyena/second/dada_nr_hits.fasta")
+
+names(FUZZ) <- gsub("\\.\\d+$", "", names(FUZZ))
+
+newname <- sapply(names(FUZZ), function(acc){
+    focus <- FUZZ.tax[FUZZ.tax$subject%in%acc,]
+    ## names corresponding to 
+    ## outlevels <- c("domain","phylum","class","order","family","genus")
+    paste(focus[,c("superkingdom", "phylum", "class", 
+                   "order", "family", "genus")], collapse=";")
+})
+
+names(FUZZ) <- newname
+
+## now get rid of whole genomes and other really long sequences for
+## efficiency of RDP
+FUZZ <- FUZZ[(width(FUZZ)<5000)]
+
+allFUZZ <- DNAStringSet(c(FAS.taxed, FUZZ))
+
+Biostrings::writeXStringSet(allFUZZ, "/SAN/db/RDP/Silva_123/SILVA_123_dada2_exp.fasta", format="fasta")
