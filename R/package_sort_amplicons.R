@@ -176,6 +176,8 @@ pdf("figures/full_otu_dadaMap.pdf", width=15, height=15)
 pheatmap(log10(all.otu.counts+.1))
 dev.off()
 
+## follow this 
+## https://f1000research.com/articles/5-1492/v2
 
 ## phylogenetic trees 
 align.seqtab <- function (seqtab){
@@ -702,6 +704,110 @@ do.call("grid.arrange", c(logDistWUF.l, ncol=2))
 dev.off()
 
 
+## ## Check ccpna
+## ordX <- lapply(log.ps.l, function(ps){
+##     ps.ccpna <- ordinate(ps, "CCA", formula = ps ~ rank + pack)
+##     ps.scores <- vegan::scores(ps.ccpna)
+##     sites <- data.frame(ps.scores$sites)
+##     sites$SampleID <- rownames(sites)
+##     sites <- merge(sites, sample_data(ps), by=0, all.x=TRUE)
+##     species <- data.frame(ps.scores$species)
+##     species$otu_id <- seq_along(colnames(otu_table(ps)))
+##     species <- left_join(species, tax)
+##     evals_prop <- 100 * (ranks_pca$eig / sum(ranks_pca$eig))
+##     ggplot() +
+##         geom_point(data = row_scores,
+##                    aes(x = li.Axis1, y = li.Axis2), shape = 2) +
+##         geom_point(data = col_scores,
+##                    aes(x = 25 * co.Comp1, y = 25 * co.Comp2, col = Order),
+##                    size = .3, alpha = 0.6) +
+##         scale_color_brewer(palette = "Set2") +
+##         facet_grid(~ rank) +
+##         guides(col = guide_legend(override.aes = list(size = 3))) +
+##         labs(x = sprintf("Axis1 [%s%% variance]", round(evals_prop[1], 2)),
+##              y = sprintf("Axis2 [%s%% variance]", round(evals_prop[2], 2))) +
+##         coord_fixed(sqrt(ranks_pca$eig[2] / ranks_pca$eig[1])) +
+##         theme(panel.border = element_rect(color = "#787878",
+##                                           fill = alpha("white", 0)))
+## })
+
+## ## Supervised learning
+library(caret)
+
+predict.pls <- function(pslog, method){
+    dataMatrix <- data.frame(rank = sample_data(pslog)$rank, otu_table(pslog))
+    ## take 20 mice at random to be the training set, and the remaining 24
+    ## the test set
+    trainingHyena <- sample(unique(sample_data(pslog)$Subject), size = 20)
+    inTrain <- which(sample_data(pslog)$Subject %in% trainingHyena)
+    training <- dataMatrix[inTrain,]
+    testing <- dataMatrix[-inTrain,]
+    plsFit <- train(rank ~ ., data = training,
+                    method = method, preProc = "center")
+    plsClasses <- predict(plsFit, newdata = testing)
+    table(plsClasses, testing$rank)
+}
+
+PLS <- lapply(log.Gen.l[c(1, 16:18)], predict.pls, "pls")
+
+PLS
+
+## [[1]]
+          
+## plsClasses high low
+##       high   16  12
+##       low     5   8
+
+## [[2]]
+          
+## plsClasses high low
+##       high    7   4
+##       low    17  13
+
+## [[3]]
+          
+## plsClasses high low
+##       high   14   9
+##       low     8  10
+
+## [[4]]
+          
+## plsClasses high low
+##       high   14  12
+##       low     8   7
+
+
+
+RF <- lapply(log.TSps.l[c(1, 16:18)], predict.pls, "rf")
+
+RF
+
+## [[1]]
+          
+## plsClasses high low
+##       high   13   4
+##       low    13  11
+
+## [[2]]
+          
+## plsClasses high low
+##       high    0   0
+##       low    26  15
+
+## [[3]]
+          
+## plsClasses high low
+##       high   11  10
+##       low    12   8
+
+## [[4]]
+          
+## plsClasses high low
+##       high    6   4
+##       low    17  14
+
+
+
 ################## hierarchical testing ###############
 get.hier.test <- function(ps){
     ## ## Playing with DEseq2
@@ -780,3 +886,8 @@ tests.dist.coll <- mclapply(log.Dist.l, tryCatch(get.hier.test, error = function
                             mc.cores=20)
 
 lapply(tests.dist.coll, function (x) x[x$adjp<0.05& !is.na(x$adjp),])
+
+the.test <- lapply(tests.gen.coll,
+                   function (x) x[x$adjp<0.05& !is.na(x$adjp),])
+## Linguatula
+
