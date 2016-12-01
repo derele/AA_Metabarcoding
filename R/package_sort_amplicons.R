@@ -882,6 +882,141 @@ lapply(tests.gen.coll, function (x) x[x$adjp<0.05& !is.na(x$adjp),])
 ## gut microbiota, as well as being present within the human g
 
 
+
+table(rowSums(otu_table(subset_taxa(log.Gen.l[[17]], Genus%in%"Slackia")))>0,
+      sample_data(log.Gen.l[[4]])$rank)
+
+##       high low
+## FALSE    9  20
+## TRUE    24   8
+
+table(rowSums(otu_table(subset_taxa(log.Gen.l[[17]], Genus%in%"Slackia"))),
+      sample_data(log.Gen.l[[4]])$rank)
+
+##                  high low
+## 0                   9  20
+## 1.09861228866811    1   0
+## 1.6094379124341     2   1
+## 2.07944154167984    1   0
+## 2.19722457733622    3   1
+## 2.30258509299405    3   2
+## 2.39789527279837    1   2
+## 2.56494935746154    0   1
+## 2.63905732961526    2   1
+## 2.77258872223978    3   0
+## 2.99573227355399    1   0
+## 3.29583686600433    1   0
+## 3.3322045101752     1   0
+## 3.40119738166216    2   0
+## 3.43398720448515    1   0
+## 3.52636052461616    1   0
+## 3.76120011569356    1   0
+
+table(rowSums(otu_table(subset_taxa(log.Gen.l[[17]],
+                                    Genus%in%"Erysipelotrichaceae_UCG-001")))>0,
+      sample_data(log.Gen.l[[4]])$rank)
+
+##       high low
+## FALSE   15  24
+## TRUE    18   4
+
+
+table(rowSums(otu_table(subset_taxa(log.Gen.l[[17]],
+                                    Genus%in%"Erysipelotrichaceae_UCG-001"))),
+      sample_data(log.Gen.l[[4]])$rank)
+
+##                  high low
+## 0                  15  24
+## 1.6094379124341     2   0
+## 1.79175946922805    2   1
+## 1.94591014905531    4   1
+## 2.07944154167984    1   2
+## 2.19722457733622    1   0
+## 2.30258509299405    3   0
+## 2.484906649788      2   0
+## 2.56494935746154    2   0
+## 2.77258872223978    1   0
+
+
+table(rowSums(otu_table(subset_taxa(log.Gen.l[[17]],
+                                    Genus%in%"Romboutsia")))>0,
+      sample_data(log.Gen.l[[4]])$rank)
+
+##       high low
+## FALSE   31  19
+## TRUE     2   9
+
+table(rowSums(otu_table(subset_taxa(log.Gen.l[[17]],
+                                    Genus%in%"Romboutsia"))),
+      sample_data(log.Gen.l[[4]])$rank)
+
+##                  high low
+## 0                  31  19
+## 2.07944154167984    0   1
+## 2.19722457733622    0   1
+## 2.70805020110221    1   0
+## 2.83321334405622    0   1
+## 2.99573227355399    1   0
+## 3.09104245335832    0   1
+## 3.13549421592915    0   1
+## 3.40119738166216    0   1
+## 3.66356164612965    0   1
+## 3.87120101090789    0   1
+## 3.97029191355212    0   1
+
+
+
+table(rowSums(otu_table(subset_taxa(log.Gen.l[[17]],
+                                    Genus%in%"Bacteroidales_S24-7_group_ge")))>0,
+      sample_data(log.Gen.l[[4]])$rank)
+
+##       high low
+## FALSE   32  22
+## TRUE     1   6
+
+
+table(rowSums(otu_table(subset_taxa(log.Gen.l[[17]],
+                                    Genus%in%"Bacteroidales_S24-7_group_ge"))),
+      sample_data(log.Gen.l[[4]])$rank)
+
+##                   high low
+## 0                   32  22
+## 0.693147180559945    1   1
+## 1.79175946922805     0   2
+## 2.30258509299405     0   1
+## 2.70805020110221     0   1
+## 3.36729582998647     0   1
+
+
+
+table(rowSums(otu_table(subset_taxa(log.Gen.l[[17]],
+                                    Genus%in%"Erysipelotrichaceae_UCG-004")))>0,
+      sample_data(log.Gen.l[[4]])$rank)
+
+##       high low
+## FALSE   29  18
+## TRUE     4  10
+
+table(rowSums(otu_table(subset_taxa(log.Gen.l[[17]],
+                                    Genus%in%"Erysipelotrichaceae_UCG-004"))),
+      sample_data(log.Gen.l[[4]])$rank)
+
+##                  high low
+## 0                  29  18
+## 1.38629436111989    0   2
+## 1.6094379124341     2   0
+## 1.79175946922805    0   1
+## 2.19722457733622    0   1
+## 2.484906649788      1   1
+## 2.56494935746154    0   1
+## 2.63905732961526    1   0
+## 3.2188758248682     0   1
+## 3.29583686600433    0   1
+## 4.4188406077966     0   1
+## 4.49980967033027    0   1
+
+
+
 tests.dist.coll <- mclapply(log.Dist.l, tryCatch(get.hier.test, error = function (e) NA),
                             mc.cores=20)
 
@@ -890,4 +1025,7 @@ lapply(tests.dist.coll, function (x) x[x$adjp<0.05& !is.na(x$adjp),])
 the.test <- lapply(tests.gen.coll,
                    function (x) x[x$adjp<0.05& !is.na(x$adjp),])
 ## Linguatula
+
+
+
 
