@@ -879,7 +879,7 @@ lapply(tests.gen.coll, function (x) x[x$adjp<0.05& !is.na(x$adjp),])
 
 ## Bacteroidales_S24-7:
 ## representatives constitute a substantial component of the murine
-## gut microbiota, as well as being present within the human g
+## gut microbiota, as well as being present within the human gut
 
 
 
