@@ -29,7 +29,10 @@ samples <- gsub("/SAN/Metabarcoding/AA_combi/all_fastq_raw/(.*?_S\\d+).*?\\.fast
 filt_path <- "/SAN/Metabarcoding/AA_combi/DaDafilt"
 if(!file_test("-d", filt_path)) dir.create(filt_path)
 filtFs <- file.path(filt_path, paste0(samples, "_F_filt.fastq.gz"))
+names(filtFs) <- samples
+
 filtRs <- file.path(filt_path, paste0(samples, "_R_filt.fastq.gz"))
+names(filtRs) <- samples
 
 ## ## Filter # only run when new filtered data is needed
 ## for(i in seq_along(Ffq.file)) {
@@ -52,89 +55,46 @@ names(primerR) <- as.character(ptable[,2])
 rownames(ptable) <- apply(ptable[,3:4], 1, paste, collapse=":")
 ptable$pRnames <- apply(ptable[,1:2], 1, paste, collapse=":")
 
-filtFs.e <- filtFs[file.exists(filtFs)&file.exists(filtRs)]
-filtRs.e <- filtRs[file.exists(filtFs)&file.exists(filtRs)]
+## filtFs.e <- filtFs[file.exists(filtFs)&file.exists(filtRs)]
+## filtRs.e <- filtRs[file.exists(filtFs)&file.exists(filtRs)]
 
 ## ## one of the NK-H2O file is empty
 ## filtFs[!filtFs%in%filtFs.e]
 ## [1] "/SAN/Metabarcoding/AA_combi/DaDafilt/NK-H2O_S59_F_filt.fastq.gz"
 
-files <- PairedReadFileSet(filtFs.e, filtRs.e)
+## files <- PairedReadFileSet(filtFs.e, filtRs.e)
+
+files <- PairedReadFileSet(filtFs, filtRs)
+
 primers <- PrimerPairsSet(primerF, primerR)
 
-MA.Hy <- MultiAmplicon(primers, files)
-MA.Hy <- sortAmplicons(MA.Hy)
-
+MA <- MultiAmplicon(primers, files)
+MA <- sortAmplicons(MA)
 
 pdf("figures/primers_MA_sorted.pdf", 
     width=25, height=15, onefile=FALSE)
 pheatmap(log10(MA.Hy@rawCounts+.1))
 dev.off()
 
+MA <- derepMulti(MA, verbose=TRUE)
 
-## name it when putting the below in the package:
-derepEmpty <- function(x){
-    d <- derepFastq(x[file.info(x)$size>21])
-    names(d) <- x[file.info(x)$size>21]
-    return(d)
-}
-
-## different amplicons (in rows) dereplicated 
-MultiDerepF  <- apply(MA.Hy@FstratifiedFiles, 1, derepEmpty)
-names(MultiDerepF) <- names(MA.Hy@PrimerPairsSet)
-
-## same for reverse reads
-MultiDerepR  <- apply(MA.Hy@RstratifiedFiles, 1, derepEmpty)
-names(MultiDerepR) <- names(MA.Hy@PrimerPairsSet)
-
-## check empty are removed
+MA <- dadaMulti(MA, verbose=TRUE)
 
 ## list of dada sample inference objects
-MultiDadaF  <- lapply(MultiDerepF, function(x){
-    dada(x, err=NULL, selfConsist=TRUE)
-})
 
-## list of dada sample inference objects
-MultiDadaR  <- lapply(MultiDerepR, function(x){
-    dada(x, err=NULL, selfConsist=TRUE)
-})
+MA <- mergeMulti(MA, justConcatenate=TRUE,
+                 verbose=TRUE)
 
+MA@sequenceTable <- lapply(MA@mergers,  makeSequenceTable)
 
-mergers <- lapply(seq_along(MultiDadaF), function (i){
-    mergePairs(MultiDadaF[[i]], MultiDerepF[[i]],
-               MultiDadaR[[i]], MultiDerepR[[i]],
-               justConcatenate=TRUE, verbose=TRUE)
-})
-names(mergers) <- names(MultiDadaF)
+MA@sequenceTableNoChime <- mclapply(MA@sequenceTable,
+                                    removeBimeraDenovo, verbose=TRUE,
+                                    mc.cores=20)
 
-ST <- lapply(mergers,  makeSequenceTable)
-
-lapply(ST, function (x){
-    dim(x)
-})
-
-STnoC <- mclapply(ST, removeBimeraDenovo, verbose=TRUE,
-                  mc.cores=20)
-
-## tough fix fot the filenames at this point
-STnoC <- lapply(STnoC, function(x){
-   n <- gsub(".*?(.{4}_S\\d+)_L001_.*",  "\\1" ,
-             rownames(x),
-             perl=TRUE)
-   rownames(x) <- n
-   return(x)
-})
-
-lapply(STnoC, dim)
-
+## the level percent of non-Bimera sequences
 lapply(seq_along(ST), function (i){
     sum(STnoC[[i]]/sum(ST[[i]]))
 })
-
-
-lapply(ST, nrow)
-lapply(STnoC, nrow)
-lapply(STnoC, ncol)
 
 sumSample <- lapply(STnoC, rowSums)
 dadaMapped <- melt(sumSample)
