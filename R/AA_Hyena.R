@@ -7,9 +7,9 @@ library(dada2)
 library(pheatmap)
 ## library(ggplot2)
 library(reshape)
-## library(DECIPHER)
-## library(parallel)
-## library(phangorn)
+library(DECIPHER)
+library(parallel)
+library(phangorn)
 ## library(plyr)
 library(dplyr)
 ## library(gridExtra)
@@ -56,15 +56,6 @@ names(primerR) <- as.character(ptable[,2])
 rownames(ptable) <- apply(ptable[,3:4], 1, paste, collapse=":")
 ptable$pRnames <- apply(ptable[,1:2], 1, paste, collapse=":")
 
-## filtFs.e <- filtFs[file.exists(filtFs)&file.exists(filtRs)]
-## filtRs.e <- filtRs[file.exists(filtFs)&file.exists(filtRs)]
-
-## ## one of the NK-H2O file is empty
-## filtFs[!filtFs%in%filtFs.e]
-## [1] "/SAN/Metabarcoding/AA_combi/DaDafilt/NK-H2O_S59_F_filt.fastq.gz"
-
-## files <- PairedReadFileSet(filtFs.e, filtRs.e)
-
 files <- PairedReadFileSet(filtFs, filtRs)
 
 primers <- PrimerPairsSet(primerF, primerR)
@@ -89,14 +80,19 @@ MA5 <- MultiAmplicon:::sequenceTableMulti(MA4)
 
 MA6 <- MultiAmplicon:::noChimeMulti(MA5, mc.cores=20)
 
+
+########## From here: work with MA package finished #### 
+
 names(MA6@sequenceTableNoChime) <- rownames(MA6)
+STnoC <- MA6@sequenceTableNoChime
+
 
 ## the level percent of non-Bimera sequences
 lapply(seq_along(MA6@sequenceTable), function (i){
-    sum(MA6@sequenceTableNoChime[[i]]/sum(MA6@sequenceTable[[i]]))
+    sum(STnoC[[i]]/sum(MA6@sequenceTable[[i]]))
 })
 
-sumSample <- lapply(MA6@sequenceTableNoChime, rowSums)
+sumSample <- lapply(STnoC, rowSums)
 dadaMapped <- melt(sumSample)
 dadaMapped$sample <- unlist(lapply(sumSample, names))
 
@@ -124,9 +120,7 @@ dev.off()
 
 Samples.to.exclude <- names(cluster.table[cluster.table==2])
 
-########## Remove failed samples ###########################
-STnoC <- MA6@sequenceTableNoChime
-    
+########## Remove failed samples ###########################    
 tSTnoC <- lapply(STnoC, function(x) as.data.frame(t(x)))
 all.otu.counts <- bind_rows(tSTnoC)
 all.otu.counts[is.na(all.otu.counts)] <- 0
@@ -145,7 +139,7 @@ dev.off()
 align.seqtab <- function (seqtab){
     seqs <- getSequences(seqtab)
     names(seqs) <- seqs 
-    alignment <- AlignSeqs(RNAStringSet(seqs), anchor=NA)
+    alignment <- AlignSeqs(RNAStringSet(DNAStringSet(seqs)), anchor=NA)
 }
 
 alignments <- mclapply(STnoC, align.seqtab, mc.cores=20)
@@ -164,25 +158,8 @@ get.tree.from.alignment <- function (alignment){
     return(fitGTR)
 }
 
-trees <- mclapply(alignments, get.tree.from.alignment, mc.cores=20)
 
-num.seq <- lapply(trees, function (x) length(x$tree$tip.label))
-sum.edge.length <- lapply(trees, function (x) sum(x$tree$edge.length))
-number.edges <- lapply(trees, function (x) length(x$tree$edge.length))
-l.per.edge <- lapply(trees, function (x) sum(x$tree$edge.length)/length(x$tree$edge.length))
-
-primer.overview <- as.data.frame(cbind(
-    num.seq=unlist(num.seq),
-    sum.edge.length=unlist(sum.edge.length),
-    l.per.edge=unlist(l.per.edge)))
-
-
-primer.overview <- merge(ptable, primer.overview, by=0)
-rownames(primer.overview) <- primer.overview$Row.names
-primer.overview$Row.names <- NULL
-
-## Or load at this point for complete data up to here
-## load("/home/ele/Sunday.Rdata")
+tree.l <- mclapply(alignments, get.tree.from.alignment, mc.cores=20)
 
 ##### TAXONOMY assignment
 assign.full.tax <- function(seqtab){
@@ -196,28 +173,17 @@ assign.full.tax <- function(seqtab){
 set.seed(100) # Initialize random number generator for reproducibility
 tax.l <- mclapply(STnoC, assign.full.tax, mc.cores=20)
 
-## save(tax.l, file="/SAN/Metabarcoding/Hyena/second/taxa.Rdata")
-
 lapply(tax.l, function (x) {
     rownames(x) <- NULL
     head(x)
 })
 
-## how many are assigned to Genus level
-tax.tab <- sapply(c("Phylum", "Class", "Order", "Family", "Genus"), function (y){
-    sapply(tax.l, function (x, level=y) {
-        ## not just reporting the level above and not NA
-        assigned <- !grepl("_\\w{2}", x[, level]) & !is.na(x[, level])
-        length(assigned[assigned])/length(assigned)
-    })
-})
 
-rownames(tax.tab) <- names(STnoC)
-tax.tab[order(tax.tab[, "Genus"]), ]
+## save(MA6, file="/SAN/Metabarcoding/allMA.Rdata")
+## save(STnoC, file="/SAN/Metabarcoding/table.Rdata")
+## save(tax.l, file="/SAN/Metabarcoding/taxa.Rdata")
+## save(trees, file="/SAN/Metabarcoding/trees.Rdata")
 
-primer.overview <- merge(primer.overview, tax.tab, by=0)
-rownames(primer.overview) <- primer.overview$Row.names
-primer.overview$Row.names <- NULL
 
 ######### FROM HERE completely Hyena specific ###################
 
@@ -227,29 +193,26 @@ Hyena.Cat <- as.data.frame(apply(Hyena.Cat, 2, function (x) gsub(" ", "", x)))
 Hyena.Cat$V1 <- ifelse(Hyena.Cat$V1==1, "Male", "Female")
 Hyena.Cat$V2 <- ifelse(Hyena.Cat$V2==2, "Cub", "Adult")
 Hyena.Cat$V3 <- ifelse(Hyena.Cat$V3==1, "high", "low")
-Hyena.Cat$V3[is.na(Hyena.Cat$V3)] <- "low" ## watchout not TRUE!!!
+## Hyena.Cat$V3[is.na(Hyena.Cat$V3)] <- "low" ## watchout not TRUE!!!
+Hyena.Cat <- Hyena.Cat[!is.na(Hyena.Cat$V3), ]
 
 names(Hyena.Cat) <- c("animal", "ID", "sex", "age", "rank", "pack")
 rownames(Hyena.Cat) <- Hyena.Cat$ID
 Hyena.Cat$ID <- Hyena.Cat$animal <- NULL
 
+Exp.Cat <- read.table("/SAN/Metabarcoding/AA_combi/sample_table.csv", header=FALSE)
 
 get.sample.data <- function(seqtab.nochim){
     samples.out <- rownames(seqtab.nochim)
     samples.out <- samples.out[!samples.out%in%Samples.to.exclude]
-    subject.ids <- gsub(".*?(.{4})_S\\d+.*?$", "\\1", samples.out)
-    subject.df <- as.data.frame(cbind(Subject=samples.out, Subject.ids=subject.ids))
-    subject.df <- subject.df[subject.df$Subject.ids%in%rownames(Hyena.Cat), ]
+    subject.df <- Exp.Cat[Exp.Cat$V1%in%rownames(Hyena.Cat), ]
     subject.df <- merge(subject.df, Hyena.Cat,
-                        by.x="Subject.ids", by.y=0)
-    subject.df <- subject.df[!duplicated(subject.df$Subject), ]
-    subject.df <- subject.df[!is.na(subject.df$Subject), ]
-    rownames(subject.df) <- subject.df$Subject
-    seqtab.phylo <- seqtab.nochim[!duplicated(rownames(seqtab.nochim)), ]
-    seqtab.phylo <- seqtab.phylo[rownames(seqtab.phylo)%in%subject.df$Subject, ]
+                        by.x="V1", by.y=0)
+    rownames(subject.df) <- subject.df$V2
+    seqtab.phylo <- seqtab.nochim[rownames(seqtab.nochim)%in%rownames(subject.df), ]
     ## order the two identically
     subject.df <- subject.df[rownames(seqtab.phylo), ]
-    subject.df$rep <- ifelse(duplicated(subject.df$Subject.id), "r2", "r1")
+    subject.df$rep <- ifelse(duplicated(subject.df$V1), "r2", "r1")
     list(subject.df, seqtab.phylo)
 }
 
@@ -274,13 +237,11 @@ lapply(ps.l, function(ps){
     table(tax_table(ps)[, "Phylum"], exclude = NULL)
 })
 
-
 ## remove otus without phylum level reported
 SSps.l <- lapply(ps.l, function (ps){
     subset_taxa(ps, !is.na(Phylum) &
                     !Phylum %in% c("", "undef", "uncharacterized"))
 })
-
 
 ## Are there phyla that are comprised of mostly low-prevalence
 ## features? Compute the total and average prevalences of the features
