@@ -2,18 +2,18 @@
 ## devtools::install_github("derele/MultiAmplicon")
 
 library(MultiAmplicon)
-library(dada2)
 library(phyloseq)
+## library(dada2)
 library(pheatmap)
-library(ggplot2)
+## library(ggplot2)
 library(reshape)
-library(DECIPHER)
-library(parallel)
-library(phangorn)
-library(plyr)
-library(gridExtra)
-library(nlme)
-library(structSSI)
+## library(DECIPHER)
+## library(parallel)
+## library(phangorn)
+## library(plyr)
+## library(gridExtra)
+## library(nlme)
+## library(structSSI)
 
 a.files <- list.files(path="/SAN/Metabarcoding/AA_combi/all_fastq_raw",
                       pattern=".fastq.gz", full.names=TRUE)
@@ -24,9 +24,9 @@ Rfq.file <- a.files[grepl("R2", a.files)]
 ## asses the Quality
 ## plotQualityProfile(Rfq.file[[20]])
 
-samples <- gsub("/SAN/Metabarcoding/AA_combi/all_fastq_raw/(.*?_S\\d+).*?\\.fastq\\.gz", "\\1", Ffq.file)
+samples <- gsub("/SAN/Metabarcoding/AA_combi/all_fastq_raw/(S\\d+).*?\\.fastq\\.gz", "\\1", Ffq.file)
 
-filt_path <- "/SAN/Metabarcoding/AA_combi/DaDafilt"
+filt_path <- "/SAN/Metabarcoding/AA_combi/DaDaFiltN"
 if(!file_test("-d", filt_path)) dir.create(filt_path)
 filtFs <- file.path(filt_path, paste0(samples, "_F_filt.fastq.gz"))
 names(filtFs) <- samples
@@ -69,34 +69,31 @@ files <- PairedReadFileSet(filtFs, filtRs)
 primers <- PrimerPairsSet(primerF, primerR)
 
 MA <- MultiAmplicon(primers, files)
-MA <- sortAmplicons(MA)
+
+MA1 <- sortAmplicons(MA)
 
 pdf("figures/primers_MA_sorted.pdf", 
     width=25, height=15, onefile=FALSE)
-pheatmap(log10(MA.Hy@rawCounts+.1))
+cluster <- plot_Amplicon_numbers(rawCounts(MA1))
 dev.off()
 
-MA <- derepMulti(MA, verbose=TRUE)
+MA2 <- derepMulti(MA1)
 
-MA <- dadaMulti(MA, verbose=TRUE)
+MA3 <- dadaMulti(MA2, err=NULL, selfConsist=TRUE,
+                 multithread=TRUE)
 
-## list of dada sample inference objects
+MA4 <- MultiAmplicon:::mergeMulti(MA3, justConcatenate=TRUE)
+                 
+MA5 <- MultiAmplicon:::sequenceTableMulti(MA4)
 
-MA <- mergeMulti(MA, justConcatenate=TRUE,
-                 verbose=TRUE)
-
-MA@sequenceTable <- lapply(MA@mergers,  makeSequenceTable)
-
-MA@sequenceTableNoChime <- mclapply(MA@sequenceTable,
-                                    removeBimeraDenovo, verbose=TRUE,
-                                    mc.cores=20)
+MA6 <- MultiAmplicon:::noChimeMulti(MA5, mc.cores=20)
 
 ## the level percent of non-Bimera sequences
-lapply(seq_along(ST), function (i){
-    sum(STnoC[[i]]/sum(ST[[i]]))
+lapply(seq_along(MA6@sequenceTable), function (i){
+    sum(MA6@sequenceTableNoChime[[i]]/sum(MA6@sequenceTable[[i]]))
 })
 
-sumSample <- lapply(STnoC, rowSums)
+sumSample <- lapply(MA6@sequenceTableNoChime, rowSums)
 dadaMapped <- melt(sumSample)
 dadaMapped$sample <- unlist(lapply(sumSample, names))
 

@@ -59,14 +59,8 @@ files <- PairedReadFileSet(filtFs.e, filtRs.e)
 primers <- PrimerPairsSet(primerF, primerR)
 
 MA.Hy <- MultiAmplicon(primers, files)
-MA.Hy <- sortAmplicons(MA.Hy)
 
-## name it when putting the below in the package:
-derepEmpty <- function(x){
-    d <- derepFastq(x[file.info(x)$size>21])
-    names(d) <- x[file.info(x)$size>21]
-    return(d)
-}
+MA.Hy <- sortAmplicons(MA.Hy)
 
 ## different amplicons (in rows) dereplicated 
 MultiDerepF  <- apply(MA.Hy@FstratifiedFiles, 1, derepEmpty)
