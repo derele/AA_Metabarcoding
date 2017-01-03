@@ -3,7 +3,7 @@
 
 library(MultiAmplicon)
 library(phyloseq)
-## library(dada2)
+library(dada2)
 library(pheatmap)
 ## library(ggplot2)
 library(reshape)
@@ -11,6 +11,7 @@ library(reshape)
 ## library(parallel)
 ## library(phangorn)
 ## library(plyr)
+library(dplyr)
 ## library(gridExtra)
 ## library(nlme)
 ## library(structSSI)
@@ -88,6 +89,8 @@ MA5 <- MultiAmplicon:::sequenceTableMulti(MA4)
 
 MA6 <- MultiAmplicon:::noChimeMulti(MA5, mc.cores=20)
 
+names(MA6@sequenceTableNoChime) <- rownames(MA6)
+
 ## the level percent of non-Bimera sequences
 lapply(seq_along(MA6@sequenceTable), function (i){
     sum(MA6@sequenceTableNoChime[[i]]/sum(MA6@sequenceTable[[i]]))
@@ -102,7 +105,7 @@ Dmap[is.na(Dmap)] <- 0
 
 pdf("figures/primers_dadaMap.pdf",
     width=15, height=15, onefile=FALSE)
-pheatmap(log10(Dmap+.1))
+pheatmap(log10(Dmap+1))
 dev.off()
 
 plot.exclude.clusters <- function(OTUs, k=2) {
@@ -115,15 +118,15 @@ plot.exclude.clusters <- function(OTUs, k=2) {
     return(clusCatOTU)
 }
 
-pdf("figures/dada_sample_exclusion_test.pdf", width=15, height=15)
+pdf("figures/dada_sample_exclusion_test.pdf", width=24, height=12)
 cluster.table <- plot.exclude.clusters(Dmap, 2)
 dev.off()
 
-Samples.to.exclude <- names(cluster.table[cluster.table==1])
+Samples.to.exclude <- names(cluster.table[cluster.table==2])
 
 ########## Remove failed samples ###########################
-library(dplyr)
-
+STnoC <- MA6@sequenceTableNoChime
+    
 tSTnoC <- lapply(STnoC, function(x) as.data.frame(t(x)))
 all.otu.counts <- bind_rows(tSTnoC)
 all.otu.counts[is.na(all.otu.counts)] <- 0
@@ -132,7 +135,7 @@ all.otu.counts[is.na(all.otu.counts)] <- 0
 ## this figure is disturbing... see what happened!
 ## is it just the "data crunching" above?
 pdf("figures/full_otu_dadaMap.pdf", width=15, height=15)
-pheatmap(log10(all.otu.counts+.1))
+pheatmap(log10(all.otu.counts+1))
 dev.off()
 
 ## follow this 
@@ -142,7 +145,7 @@ dev.off()
 align.seqtab <- function (seqtab){
     seqs <- getSequences(seqtab)
     names(seqs) <- seqs 
-    alignment <- AlignSeqs(DNAStringSet(seqs), anchor=NA)
+    alignment <- AlignSeqs(RNAStringSet(seqs), anchor=NA)
 }
 
 alignments <- mclapply(STnoC, align.seqtab, mc.cores=20)
