@@ -1,13 +1,14 @@
+library(phyloseq)
 
 load(file="/SAN/Metabarcoding/exclude.Rdata") ## -> Samples.to.exclude
 ## load(MA6, file="/SAN/Metabarcoding/allMA.Rdata") ## -> MA6 just for
 ## control 
 load(file="/SAN/Metabarcoding/table.Rdata") ## -> STnoC
 load(file="/SAN/Metabarcoding/taxa.Rdata") ## tax.l
-## load(file="/SAN/Metabarcoding/trees.Rdata") ## tree.l
+load(file="/SAN/Metabarcoding/trees.Rdata") ## tree.l
 
 ######### FROM HERE completely Hyena specific ###################
-Hyena.Cat <- read.csv("/home/ele/Dropbox/Animal_number_variable_codes_EH.csv")
+Hyena.Cat <- read.csv("/home/ele/Dropbox/Hyena_Hartmann_MS/Animal_number_variable_codes_EH.csv")
 Hyena.Cat <- as.data.frame(apply(Hyena.Cat, 2, function (x) gsub(" ", "", x)))
 
 Hyena.Cat$V1 <- ifelse(Hyena.Cat$V1==1, "Male", "Female")
@@ -16,36 +17,78 @@ Hyena.Cat$V3 <- ifelse(Hyena.Cat$V3==1, "high", "low")
 ## Hyena.Cat$V3[is.na(Hyena.Cat$V3)] <- "low" ## watchout not TRUE!!!
 Hyena.Cat <- Hyena.Cat[!is.na(Hyena.Cat$V3), ]
 
-names(Hyena.Cat) <- c("animal", "ID", "sex", "age", "rank", "pack")
-rownames(Hyena.Cat) <- Hyena.Cat$ID
+names(Hyena.Cat) <- c("animal", "Hyena.ID", "sex", "age", "rank", "pack")
 Hyena.Cat$ID <- Hyena.Cat$animal <- NULL
 
 Exp.Cat <- read.table("/SAN/Metabarcoding/AA_combi/sample_table.csv", header=FALSE)
+names(Exp.Cat) <- c("Hyena.ID", "Sample.ID")
 
-get.sample.data <- function(seqtab.nochim){
-    samples.out <- rownames(seqtab.nochim)
-    samples.out <- samples.out[!samples.out%in%Samples.to.exclude]
-    subject.df <- Exp.Cat[Exp.Cat$V1%in%rownames(Hyena.Cat), ]
-    subject.df <- merge(subject.df, Hyena.Cat,
-                        by.x="V1", by.y=0)
-    rownames(subject.df) <- subject.df$V2
-    seqtab.phylo <- seqtab.nochim[rownames(seqtab.nochim)%in%rownames(subject.df), ]
-    ## order the two identically
-    subject.df <- subject.df[rownames(seqtab.phylo), ]
-    subject.df$rep <- ifelse(duplicated(subject.df$V1), "r2", "r1")
-    list(subject.df, seqtab.phylo)
-}
+## might be needed to add this to samples to exclude... "I436"
 
-sub.df.l <- lapply(STnoC, get.sample.data)
+subject.df <- merge(Exp.Cat, Hyena.Cat, by="Hyena.ID")
+subject.df <- subject.df[!subject.df$Sample.ID%in%Samples.to.exclude, ]
+subject.df$rep <- ifelse(duplicated(subject.df$Sample.ID), "r2", "r1")
+rownames(subject.df) <- subject.df$Sample.ID
+
+all.samples <- unique(unlist(lapply(STnoC, rownames)))
+
+STnoC.filled <- lapply(STnoC, function (foo){
+    missing.samples <- all.samples[!all.samples%in%rownames(foo)]
+    if(length(missing.samples)>0){
+        bar <- matrix(0, nrow=length(missing.samples), ncol=ncol(foo))
+        rownames(bar) <- missing.samples
+        foobar <- rbind(foo, bar)
+    } else {foobar <- foo}
+    foobar[all.samples, ]
+})
+
+Sync.STnoC.Hy <- lapply(STnoC.filled, function (x) {
+    x[rownames(subject.df), ]
+})
+
 
 ## Construct phyloseq object (straightforward from dada2 outputs)
-
-ps.l <- lapply(seq_along(sub.df.l), function (i) {
-    ps <- phyloseq(otu_table(sub.df.l[[i]][[2]], taxa_are_rows=FALSE),
-                   sample_data(sub.df.l[[i]][[1]]),
-                   ##                   phy_tree(tree.l[[i]]$tree),
+ps.l <- lapply(seq_along(Sync.STnoC.Hy), function (i) {
+    ps <- phyloseq(otu_table(Sync.STnoC.Hy[[i]], taxa_are_rows=FALSE),
+                   sample_data(subject.df),
+    ## phy_tree(tree.l[[i]]$tree),
                    tax_table(tax.l[[i]]))
     return(ps)
 })
 
-names(ps.l) <- names(STnoC)
+save(ps.l, file="/SAN/Metabarcoding/phlyoSeq_list.Rdata")
+
+all.tax.counts <- Reduce(cbind, Sync.STnoC.Hy)
+all.tax <- Reduce(rbind, tax.l)
+
+PSA <- phyloseq(otu_table(all.tax.counts, taxa_are_rows=FALSE),
+                sample_data(subject.df),
+                tax_table(all.tax))
+
+## correct number of taxa
+sum(unlist(lapply(ps.l, function (x) nrow(tax_table(x)))))
+
+save(PSA, file="/SAN/Metabarcoding/phlyoSeq_cat.Rdata")
+
+## not happy with phyloseq merge_samples so coding this manually
+sum.columns <- function(ps){
+    SD <- sample_data(ps)$Hyena.ID
+    OT <- otu_table(ps)
+    do.call(rbind, by(OT, SD, colSums))
+}
+
+## mean between replicates
+SumRSVs <- sum.columns(PSA)
+
+nrow()
+
+sum.subject.df <- subject.df[!duplicated(subject.df$Hyena.ID), ]
+sum.subject.df$Sample.ID <- NULL
+sum.subject.df$rep <- NULL
+rownames(sum.subject.df) <- sum.subject.df$Hyena.ID
+
+PS <- phyloseq(otu_table(SumRSVs, taxa_are_rows=FALSE),
+               sample_data(sum.subject.df),
+               tax_table(all.tax))
+
+save(PS, file="/SAN/Metabarcoding/phlyoSeq_Hy.Rdata")

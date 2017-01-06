@@ -1,7 +1,266 @@
-
-
+library(nlme)
+library(ggplot2)
+library(exactRankTests)
 
 ################# From here Phyloseq ######################
+## load(file="/SAN/Metabarcoding/phlyoSeq_list.Rdata") ## -> ps.l
+
+## load(file="/SAN/Metabarcoding/phlyoSeq_cat.Rdata") ## -> PSA
+
+load(file="/SAN/Metabarcoding/phlyoSeq_Hy.Rdata") ## -> PS
+
+PS.genus <- tax_glom(PS, "Genus", NArm = TRUE)
+
+PS.genus.na <- tax_glom(PS, "Genus", NArm = FALSE)
+
+Rich_plot <- plot_richness(PS.genus, x="rank") + theme_bw()  
+Rich_plot$layers <- NULL
+Rich_plot + geom_boxplot()
+
+## What phyla are detected
+
+table(tax_table(PS)[, "Phylum"])
+
+euk_phyla <- names(table(tax_table(subset_taxa(PS, Kingdom %in% "Eukaryota"))[, "Phylum"]))
+
+undef <- c("", "uncultured","undef")
+clear.prey.phyla <- c("Vertebrata", "Chordata")
+plant.phyla <- c("Chlorophyta", "Chlorophyta_ph", "Streptophyta",
+                 "Phragmoplastophyta", "Ochrophyta", "Klebsormidiophyceae",
+                 "Eustigmatophyceae", "Bacillariophyta")
+clear.parasite.phyla <- c("Nematoda", "Apicomplexa",
+                          "Platyhelminthes", "Microsporidia")
+
+## how many taxa in clear parasite phyla 
+subset_taxa(PS, Phylum %in% clear.parasite.phyla)
+subset_taxa(PS.genus, Phylum %in% clear.parasite.phyla)
+
+## how many taxa in clear prey phyla 
+subset_taxa(PS, Phylum %in% clear.prey.phyla)
+subset_taxa(PS.genus, Phylum %in% clear.prey.phyla)
+
+## most very unlikely to be correctly annotated at the genus level
+unname(tax_table(subset_taxa(PS.genus, Phylum %in% clear.prey.phyla))[, "Genus"])
+
+test.Chao <- function(ps){
+    df <- merge(sample_data(ps),
+                estimate_richness(ps, measures="Chao1"),
+                by=0)
+    test <- wilcox.exact(Chao1 ~ rank, data = df, exact = TRUE)
+    test
+}
+
+test.Chao(PS)
+test.Chao(PS.genus)
+test.Chao(PS.genus.na)
+
+test.Chao(subset_taxa(PS,
+                         !Phylum %in% c(clear.prey.phyla, undef) &
+                         Kingdom %in% "Eukaryota"
+                         ))
+
+test.Chao(subset_taxa(PS.genus.na,
+                         !Phylum %in% c(clear.prey.phyla, undef) &
+                         Kingdom %in% "Eukaryota"
+                         ))
+
+test.Chao(subset_taxa(PS.genus,
+                         !Phylum %in% c(clear.prey.phyla, undef) &
+                         Kingdom %in% "Eukaryota"
+                         ))
+
+
+test.Chao(subset_taxa(PS, Phylum %in% clear.parasite.phyla))
+
+test.Chao(subset_taxa(PS.genus.na, Phylum %in% clear.parasite.phyla))
+
+test.Chao(subset_taxa(PS.genus,Phylum %in% clear.parasite.phyla))
+
+
+test.Chao(subset_taxa(PS, Phylum %in% clear.prey.phyla))
+
+test.Chao(subset_taxa(PS, Phylum %in% plant.phyla))
+
+
+subset_taxaE<- function (physeq, subset, ...) {
+    if (is.null(tax_table(physeq))) {
+        cat("Nothing subset. No taxonomyTable in physeq.\n")
+        return(physeq)
+    }
+    else {
+        oldMA <- as(tax_table(physeq), "matrix")
+        oldDF <- data.frame(oldMA)
+        newDF <- subset(oldDF, subset, ...)
+        newMA <- as(newDF, "matrix")
+        if (inherits(physeq, "taxonomyTable")) {
+            return(tax_table(newMA))
+        }
+        else {
+            tax_table(physeq) <- tax_table(newMA)
+            return(physeq)
+        }
+    }
+}
+
+
+Chao.phyla <- lapply(euk_phyla, function(x){
+    ps <- subset_taxaE(PS.genus, tax_table(PS.genus)[, "Phylum"] %in% x)
+    ps
+    tryCatch(test.Chao(ps), error = function (e) NULL)
+})
+
+names(Chao.phyla) <- euk_phyla
+
+p.Chao <- lapply(Chao.phyla, function (x) {
+    x[c("statistic", "p.value")]
+})
+
+names(p.Chao) <- euk_phyla
+
+p.Chao <- p.Chao[!unlist(lapply(p.Chao, is.null))]
+
+p.Chao.table <- data.frame(do.call(rbind, p.Chao))
+
+## p.Chao.table$FDR <- p.adjust(p.Chao.table$p.value, method="BH")
+
+p.Chao.table[p.Chao.table$p.value<0.05, ]
+
+## working with worm counts
+WC <- read.csv("/home/ele/Dropbox/Hyena_Hartmann_MS/Hyena_WormCounts_fixed.csv")
+
+colnames(WC)[2:ncol(WC)] <- paste0("count_", colnames(WC)[2:ncol(WC)])
+
+
+## For selected genera
+
+get.ps.counts <- function (ps, level){
+    Tax.tab <- otu_table(ps)
+    tax.cols <- unname(tax_table(ps)[, level])
+    colnames(Tax.tab) <- tax.cols
+    All.data <- cbind(sample_data(ps), Tax.tab)
+    list(merge(WC, All.data, by.x="ID.Hyena", by.y="Hyena.ID"), tax.cols)
+}
+    
+
+
+############# Untargeted #################
+get.top.cors <- function(ps, level){
+    psc<- get.ps.counts(ps, level)
+    foo <- psc[[1]]
+    tax.cols <- psc[[2]]
+    count.col <- grep("count_", colnames(foo), value=TRUE)
+    foo.cor <- data.frame(t(cor(foo[, count.col], foo[, tax.cols],
+                                use="pairwise.complete.obs")))
+    top.cors <- lapply(count.col, function (x){
+        head(foo.cor[order(foo.cor[,x], decreasing=TRUE), x, drop=FALSE], n=20)
+    })
+    names(top.cors) <- count.col
+    return(top.cors)
+}
+
+## runs for very long...
+## get.top.cors(PSA.genus, "Genus")
+
+get.top.cors(PS.genus, "Genus")
+
+get.top.cors(subset_taxa(PS.genus, Phylum %in%
+                                   c("Apicomplexa", "Platyhelminthes",
+                                     "Nematoda", "Microsporidia")),
+             "Genus")
+
+
+
+##count_Mite Hemialges  1.0000000
+
+##                             count_Cystoisospora2
+## Thoreauomyces                          0.8296620
+## Rurikoplites                           0.8296620
+## Coelomomyces                           0.8250951
+## Turicibacter                           0.8005079
+## Crenosoma                              0.7881375
+## Haemonchus                             0.7784763
+## Zoniolaimus                            0.7495413
+## Isospora                               0.7398843
+
+##                  count_Dipilydium
+## Adenocephalus         0.891580404
+## Amidostomum           0.750319752
+## Cryptosporidium       0.690625689
+## Leidyana              0.542524472
+## Gregarina             0.372994050
+## Dipylidium            0.323629188
+
+##                 count_Spirurida
+## Strongyloides        0.73909046
+
+##                  count_U_Mesocestoide
+## Caryospora                0.926864282
+## Eimeria                   0.925575434
+## Eimeria.1                 0.925575434
+
+##                   count_Taenia
+## Strongyloides       0.69137862
+
+
+##                   count_Taenia.45.
+## Anoplocephala           1.00000000
+## Apharyngostrigea        1.00000000
+## Austrodiplostomum       1.00000000
+## Neoctenotaenia          1.00000000
+
+##                  count_Cystoisospora2
+## Crenosoma                  0.78813753
+## Haemonchus                 0.77847627
+## Zoniolaimus                0.74954128
+## Isospora                   0.73988429
+
+##                count_Cystoisospora_small
+## Geneiorhynchus                0.86393186
+## Toxoplasma                    0.86392121
+## Besnoitia                     0.86290245
+## Besnoitia.1                   0.86290245
+## Gregarina                     0.71671086
+
+
+##                     count_Spirometra
+## Spirometra               0.679405146
+## Diphyllobothrium         0.591959397
+
+##                   count_Ancylostoma2
+## Anoplocephala             0.98986803
+## Apharyngostrigea          0.98986803
+## Austrodiplostomum         0.98986803
+## Neoctenotaenia            0.98986803
+## Moniezia                  0.98985348
+## Paraschneideria           0.98390109
+## Cylicocyclus              0.98205917
+## Petrovinema               0.90560644
+
+##                   count_Ancylostoma_small
+## Teladorsagia                    0.7734495
+## Enterocytozoon                  0.7734495
+## Ancylostoma                     0.4450958
+## Bothridium                      0.2963130
+
+
+
+ggplot(Tax.tab, aes(Ancylostoma+1, Ancylostoma_small+Ancylostoma2+1,
+                    label=V1)) +
+    geom_point() +
+    ##    geom_text()+
+    scale_x_log10("Sequence Abundance") +
+    scale_y_log10("Flotation Counts") +
+    ggtitle("Ancylostoma") 
+
+ggplot(Tax.tab, aes(Spirometra.x+1, Spirometra.y+1)) +
+    geom_point() +
+    scale_x_log10("Sequence Abundance") +
+    scale_y_log10("Flotation Counts") +
+    ggtitle("Spirometra")
+
+### for all genera
+
+
 
 ## inspect the reported phyla
 lapply(ps.l, function(ps){
@@ -9,15 +268,16 @@ lapply(ps.l, function(ps){
 })
 
 ## remove otus without phylum level reported
-SSps.l <- lapply(ps.l, function (ps){
+Phyl.ps.l <- lapply(ps.l, function (ps){
     subset_taxa(ps, !is.na(Phylum) &
                     !Phylum %in% c("", "undef", "uncharacterized"))
 })
 
+
 ## Are there phyla that are comprised of mostly low-prevalence
 ## features? Compute the total and average prevalences of the features
 ## in each phylum.
-prevdf.l <- lapply(SSps.l, function (ps){
+prevdf.l <- lapply(Phyl.ps.l, function (ps){
    prev <- apply(X = otu_table(ps),
                  MARGIN = ifelse(taxa_are_rows(ps), yes = 1, no = 2),
                  FUN = function(x){sum(x > 0)})
@@ -49,7 +309,7 @@ prevalenceThreshold <- 2
 ## 
 TSps.l <- lapply(seq_along(prevdf.l), function(i){
     keep <- rownames(prevdf.l[[i]])[(prevdf.l[[i]]$Prevalence >= prevalenceThreshold)]
-    prune_taxa(keep, SSps.l[[i]])
+    prune_taxa(keep, Phyl.ps.l[[i]])
 })
 
 
@@ -66,7 +326,7 @@ get.num.taxa <- function(x, level="Genus"){
 }
 
 cbind(raw = lapply(ps.l, get.num.taxa),
-      wPhylum = lapply(SSps.l, get.num.taxa),
+      wPhylum = lapply(Phyl.ps.l, get.num.taxa),
       wPrev = lapply(TSps.l, get.num.taxa),
       GenAgg = lapply(Gen.l, get.num.taxa),
       DistAgg = lapply(Dist.l, get.num.taxa)
@@ -91,13 +351,13 @@ get.all.shannon <- function(ps){
 
 
 do.call(rbind, lapply(ps.l, get.all.shannon))
-do.call(rbind, lapply(SSps.l, get.all.shannon))
+do.call(rbind, lapply(Phyl.ps.l, get.all.shannon))
 do.call(rbind, lapply(TSps.l, get.all.shannon))
 do.call(rbind, lapply(Gen.l, get.all.shannon))
 do.call(rbind, lapply(Dist.l, get.all.shannon))
 
 
-Shannon.df <- do.call(rbind, lapply(SSps.l, get.all.shannon))
+Shannon.df <- do.call(rbind, lapply(Phyl.ps.l, get.all.shannon))
 rownames(Shannon.df) <- names(ps.l)
 
 annotation <- merge(primer.overview, Shannon.df, by=0)
@@ -180,7 +440,7 @@ get.female.adult.subset <- function(ps){
 }
 
 FAps.l <- lapply(ps.l, get.female.adult.subset)
-FASSps.l <- lapply(SSps.l, get.female.adult.subset)
+FAPhyl.ps.l <- lapply(Phyl.ps.l, get.female.adult.subset)
 FATSps.l <- lapply(TSps.l, get.female.adult.subset)
 FAGen.l <- lapply(Gen.l, get.female.adult.subset)
 FADist.l <- lapply(Dist.l, get.female.adult.subset)
@@ -188,8 +448,8 @@ FADist.l <- lapply(Dist.l, get.female.adult.subset)
 
 pdf("figures/FArichness_Rank.pdf", width=60, height=20)
 do.call("grid.arrange",
-        c(lapply(seq_along(FASSps.l), function (i) {
-            all.div.plots(FASSps.l[[i]], "rank", annotation[i,])
+        c(lapply(seq_along(FAPhyl.ps.l), function (i) {
+            all.div.plots(FAPhyl.ps.l[[i]], "rank", annotation[i,])
         }),
         ncol=10))
 dev.off()
@@ -212,7 +472,7 @@ get.shannon.lme <- function(ps){
 
 
 do.call(rbind, lapply(FAps.l, get.shannon.lme))
-do.call(rbind, lapply(FASSps.l, get.shannon.lme))
+do.call(rbind, lapply(FAPhyl.ps.l, get.shannon.lme))
 do.call(rbind, lapply(FATSps.l, get.shannon.lme))
 do.call(rbind, lapply(FAGen.l, get.shannon.lme))
 do.call(rbind, lapply(FADist.l, get.shannon.lme))
@@ -314,7 +574,7 @@ sapply(get_taxa_unique(FAps.l[[43]], "Phylum"), function (p) {
 ## log transformaitons on sample counts 
 ## lets go direclty for the subsetted data
 log.ps.l <- lapply(FAps.l, transform_sample_counts, function(x) log(1 + x))
-log.SSps.l <- lapply(FASSps.l, transform_sample_counts, function(x) log(1 + x))
+log.Phyl.ps.l <- lapply(FAPhyl.ps.l, transform_sample_counts, function(x) log(1 + x))
 log.TSps.l <- lapply(FATSps.l, transform_sample_counts, function(x) log(1 + x))
 log.Gen.l <- lapply(FAGen.l, transform_sample_counts, function(x) log(1 + x))
 log.Dist.l <- lapply(FADist.l, transform_sample_counts, function(x) log(1 + x))
@@ -337,7 +597,7 @@ get.ord.plot <- function(ps, meth = "MDS", dist = "bray"){
 }
 
 logBC.l <- lapply(log.ps.l[amp.16S], get.ord.plot)
-logSSBC.l <- lapply(log.SSps.l[amp.16S], get.ord.plot)
+logSSBC.l <- lapply(log.Phyl.ps.l[amp.16S], get.ord.plot)
 logTSBC.l <- lapply(log.TSps.l[amp.16S], get.ord.plot)
 logGenBC.l <- lapply(log.Gen.l[amp.16S], get.ord.plot)
 logDistBC.l <- lapply(log.Dist.l[amp.16S], get.ord.plot)
@@ -365,7 +625,7 @@ dev.off()
 logWUF.l <- lapply(log.ps.l[amp.16S], get.ord.plot,
                    meth="PCoA" , dist="wunifrac")
 
-logSSWUF.l <- lapply(log.SSps.l[amp.16S], get.ord.plot,
+logSSWUF.l <- lapply(log.Phyl.ps.l[amp.16S], get.ord.plot,
                      meth="PCoA" , dist="wunifrac")
 
 logTSWUF.l <- lapply(log.TSps.l[amp.16S], get.ord.plot,
