@@ -1,25 +1,175 @@
 library(nlme)
 library(ggplot2)
 library(exactRankTests)
+library(phyloseq)
+library(RSvgDevice)
 
 ################# From here Phyloseq ######################
-## load(file="/SAN/Metabarcoding/phlyoSeq_list.Rdata") ## -> ps.l
+load(file="/SAN/Metabarcoding/phlyoSeq_list.Rdata") ## -> ps.l
 
-## load(file="/SAN/Metabarcoding/phlyoSeq_cat.Rdata") ## -> PSA
+## Briefly, oberall number of reads for different amplicons
+sum.seq <- lapply(ps.l, function (x){
+    sum(otu_table(x))
+})
 
+sum.seq <- unlist(sum.seq)
+
+sum(sum.seq)
+mean(sum.seq, rm.na=TRUE)
+
+range(sum.seq)
+
+
+## oberall number of reads
+num.RSVs <- lapply(ps.l, function (x){
+    ncol(otu_table(x))
+})
+
+num.RSVs <- unlist(num.RSVs)
+
+sum(num.RSVs)
+mean(num.RSVs, rm.na=TRUE)
+
+range(num.RSVs)
+
+## Read numbersbetween samples before normalization and merging of technical replicates
+load(file="/SAN/Metabarcoding/phlyoSeq_cat.Rdata") ## -> PSA
+
+sample.seq <- rowSums(otu_table(PSA))
+range(sample.seq)
+
+
+## After merging of technical replicates and normalization 
 load(file="/SAN/Metabarcoding/phlyoSeq_Hy.Rdata") ## -> PS
+
+keep.PS <- colSums(otu_table(PS))>0
+
+PS <- subset_taxa(PS, keep.PS)
+PS <- subset_taxa(PS, Kingdom %in% c("Bacteria", "Eukaryota"))
 
 PS.genus <- tax_glom(PS, "Genus", NArm = TRUE)
 
-PS.genus.na <- tax_glom(PS, "Genus", NArm = FALSE)
+PS.phylum <- tax_glom(PS, "Phylum", NArm = TRUE)
 
-Rich_plot <- plot_richness(PS.genus, x="rank") + theme_bw()  
-Rich_plot$layers <- NULL
-Rich_plot + geom_boxplot()
+PS.class <- tax_glom(PS, "Class", NArm = TRUE)
+
+PS.order <- tax_glom(PS, "Order", NArm = TRUE)
+
+PS.family <- tax_glom(PS, "Family", NArm = TRUE)
+
+## Genera and RSVs Bacteria 
+subset_taxa(PS.genus, Kingdom %in% "Bacteria")
+subset_taxa(PS, Kingdom %in% "Bacteria")
+
+## Genera and RSVs Eukaryota 
+subset_taxa(PS, Kingdom %in% "Eukaryota")
+subset_taxa(PS.genus, Kingdom %in% "Eukaryota")
+
+## Bacteria read numbes 
+sum(otu_table(subset_taxa(PS, Kingdom %in% "Bacteria")))
+sum(otu_table(subset_taxa(PS.genus, Kingdom %in% "Bacteria")))
+
+## Eukaryote read numbers 
+sum(otu_table(subset_taxa(PS, Kingdom %in% "Eukaryota")))
+sum(otu_table(subset_taxa(PS.genus, Kingdom %in% "Eukaryota")))
+
+## ## Abundance vs. Intensity
+## Genus.Abu <- unname(colSums(otu_table(PS.genus)))
+## Genus.Prev <- unname(apply(otu_table(PS.genus), 2,
+##                            function (x) sum(x>0)))
+
+## Prev.Abu.Genus <- data.frame(cbind(
+##     Abu=Genus.Abu,
+##     Prev=Genus.Prev,
+##     tax_table(PS.genus)))
+
+## unicellular_phy<- c("Apicomplexa",  "Dinoflagellata", "Microsporidia")
+
+## multicellular_phy <- c("Arthropoda",  "Chordata",
+##                        "Platyhelminthes",  "Vertebrata")
+
+## Prev.Abu.Genus <- Prev.Abu.Genus[Prev.Abu.Genus$Phylum%in%c(unicellular_phy,
+##                                                             multicellular_phy), ]# |
+## ##                                 Prev.Abu.Genus$Kingdom%in%"Bacteria", ]
+                                                            
+## Prev.Abu.Genus$Prev <- as.numeric(as.character(Prev.Abu.Genus$Prev))
+## Prev.Abu.Genus$Abu <- as.numeric(as.character(Prev.Abu.Genus$Abu))
+
+## ggplot(Prev.Abu.Genus, aes(Abu, Prev, color=Phylum)) +
+##     geom_point() +
+## ##     scale_y_log10() +
+##     scale_x_log10() +
+##     geom_smooth(method="lm", se=FALSE)
+
+
+## RSV.abu <- unname(colSums(otu_table(PS)))
+
 
 ## What phyla are detected
-
 table(tax_table(PS)[, "Phylum"])
+
+tax.frame <- data.frame(tax_table(PS.genus))
+rownames(tax.frame) <- NULL
+
+## SOME FIXES FOR TAXONOMY
+table(tax.frame$Phylum)
+tax.frame$Phylum[tax.frame$Phylum%in%"Vertebrata"] <-
+    "Chordata"
+
+tax.frame$Phylum[tax.frame$Phylum%in%"Chlorophyta_ph"] <-
+    "Chlorophyta"
+
+tax.frame$Phylum[tax.frame$Phylum%in%"Euglenida"] <-
+    "Euglenozoa"           
+
+tax.frame$Phylum[tax.frame$Phylum%in%"Spirochaetes"] <-
+    "Spirochaetae"         
+
+tax.frame$counts <- unname(colSums(otu_table(PS.genus)))
+
+spurious.phyla <- names(table(tax.frame$Phylum)[table(tax.frame$Phylum)<2])
+
+## removes spurious phyla for which only one 
+tax.frame <- tax.frame[!tax.frame$Phylum%in%spurious.phyla, ]
+tax.frame <- tax.frame[!tax.frame$Phylum%in%"undef", ]
+
+tax.frame$Phylum <- droplevels(tax.frame$Phylum)
+
+Phy.roles <- read.csv("./Euk_phyla.csv")
+names(Phy.roles) <- c("Phylum", "role")
+
+tax.frame <- merge(tax.frame, Phy.roles, all.x=TRUE, by="Phylum")
+
+devSVG("figures/figures_Hyena/Figure1a_taxon_dist.svg", width=12, height=6)
+ggplot(tax.frame, aes(x=Phylum, color=role, y=..count..)) +
+    geom_bar() +
+    coord_polar() +
+    scale_y_continuous("Genera annotated per phylum") +
+    facet_grid(.~Kingdom, scales="free_x", drop=TRUE) +
+    theme_bw()
+dev.off()
+
+devSVG("figures/figures_Hyena/Figure1b_taxon_weighted.svg", width=12, height=6)
+ggplot(tax.frame, aes(x=Phylum, y=..count.., weight=counts, color=role)) +
+    geom_bar() +
+    coord_polar() +
+    scale_y_log10("Seqeuncing read counts per phylum") +
+    facet_grid(.~Kingdom, scales="free_x", drop=TRUE)+
+    theme_bw()
+dev.off()
+
+showP <- cbind(as.character(unique(sort(tax.frame$Phylum[tax.frame$Kingdom%in%"Eukaryota"]))))
+
+write.csv(showP, "Euk_phyla.csv", row.names=FALSE, quote=FALSE)
+
+library(xtable)
+
+table1_Tax <- cbind(
+    Kingdom =tapply(tax.frame$Kingdom, tax.frame$Phylum,
+                    function (x) as.character(unique(x))),
+    genera = table(tax.frame$Phylum),
+    reads = tapply(tax.frame$counts, tax.frame$Phylum, sum))
+
 
 euk_phyla <- names(table(tax_table(subset_taxa(PS, Kingdom %in% "Eukaryota"))[, "Phylum"]))
 
@@ -42,45 +192,382 @@ subset_taxa(PS.genus, Phylum %in% clear.prey.phyla)
 ## most very unlikely to be correctly annotated at the genus level
 unname(tax_table(subset_taxa(PS.genus, Phylum %in% clear.prey.phyla))[, "Genus"])
 
-test.Chao <- function(ps){
-    df <- merge(sample_data(ps),
-                estimate_richness(ps, measures="Chao1"),
-                by=0)
-    test <- wilcox.exact(Chao1 ~ rank, data = df, exact = TRUE)
-    test
+## working with worm counts ####################################################
+######## WC - Worm Counts ######################################################
+################################################################################
+WC <- read.csv("/home/ele/Dropbox/Hyena_Hartmann_MS/Hyena_WormCounts_fixed.csv",
+               as.is=TRUE)
+
+colnames(WC)[2:ncol(WC)] <- paste0("count_", colnames(WC)[2:ncol(WC)])
+
+WC[, 2:ncol(WC)] <- sapply(WC[, 2:ncol(WC)],
+                           function(x) as.numeric(as.character(x)))
+
+WC$count_Cystoisospora<- round(WC$count_Cystoisospora_small +
+                               WC$count_Cystoisospora2)
+
+WC$count_Ancylostoma<- round(WC$count_Ancylostoma_small+ WC$
+                             count_Ancylostoma2)
+
+WC$count_Spirometra <- round(WC$count_Spirometra)
+
+## extract only what is usable
+WC <- WC[, c("ID.Hyena", "count_Cystoisospora", "count_Cystoisospora_small",
+             "count_Cystoisospora2",
+             "count_Ancylostoma", "count_Ancylostoma_small", "count_Ancylostoma2",
+             "count_Spirometra")]
+
+## use only the samples we have seqdata for
+
+WC <- WC[WC$ID.Hyena%in%sample_data(PS)$Hyena.ID,]
+
+apply(WC, 2, function (x) summary.factor(as.numeric(as.character(x))>0))
+
+## For selected genera and whole Phyla
+
+Genus.tab <- otu_table(PS.genus)
+Genus.cols <- make.names(make.unique(unname(tax_table(PS.genus)[, "Genus"])))
+colnames(Genus.tab) <- Genus.cols
+
+Family.tab <- otu_table(PS.family)
+Family.cols <- make.names(make.unique(unname(tax_table(PS.family)[, "Family"])))
+colnames(Family.tab) <- Family.cols
+
+Order.tab <- otu_table(PS.order)
+Order.cols <- make.names(make.unique(unname(tax_table(PS.order)[, "Order"])))
+colnames(Order.tab) <- Order.cols
+
+Class.tab <- otu_table(PS.class)
+Class.cols <- make.names(make.unique(unname(tax_table(PS.class)[, "Class"])))
+colnames(Class.tab) <- Class.cols
+
+Phylum.tab <- otu_table(PS.phylum)
+Phylum.cols <- make.names(make.unique(unname(tax_table(PS.phylum)[, "Phylum"])))
+colnames(Phylum.tab) <- Phylum.cols
+
+tax.tab <- cbind(Phylum.tab, Class.tab, Order.tab, Family.tab, Genus.tab)
+tax.cols <- make.names(make.unique(colnames(tax.tab)))
+
+All.data <- data.frame(cbind(sample_data(PS.genus), tax.tab))
+All.data <- merge(WC, All.data, by.x="ID.Hyena", by.y="Hyena.ID")
+
+## The raw taxonomy information to compare against
+tax.raw <- data.frame(tax_table(PS))
+
+get.lower.in.hihger.tax <- function(level, higher, lower.level){
+    ss <- tax.raw[tax.raw[, level]%in%higher, ]
+    names(table(as.character(ss[, lower.level])))
 }
 
-test.Chao(PS)
-test.Chao(PS.genus)
-test.Chao(PS.genus.na)
+get.lower.in.hihger.tax("Order", "Rhabditida", "Genus")
+    
+############# Untargeted #################
+count.col <- grep("count_", colnames(All.data), value=TRUE)
 
-test.Chao(subset_taxa(PS,
+spear.cor <- data.frame(t(cor(All.data[, count.col], All.data[, tax.cols],
+                              method="spearman",
+                              use="pairwise.complete.obs")))
+
+pear.cor <- data.frame(t(cor(All.data[, count.col], All.data[, tax.cols],
+                              method="pearson",
+                              use="pairwise.complete.obs")))
+
+top.cors.spear <- lapply(count.col, function (x){
+        head(spear.cor[order(spear.cor[,x], decreasing=TRUE), x, drop=FALSE], n=10)
+})
+
+top.cors.pear <- lapply(count.col, function (x){
+        head(pear.cor[order(pear.cor[,x], decreasing=TRUE), x, drop=FALSE], n=10)
+})
+
+names(top.cors.spear) <- count.col
+names(top.cors.pear) <- count.col
+
+## Ancylostoma
+cor(All.data$Rhabditida, All.data$count_Ancylostoma_small,
+    use="pairwise.complete.obs", method="spearman")
+
+cor(All.data$Ancylostoma + All.data$Haemonchus,
+    All.data$count_Ancylostoma_small,
+    use="pairwise.complete.obs", method="spearman")
+
+cor(All.data$Ancylostoma + All.data$Haemonchus + All.data$Ostertagia,
+    All.data$count_Ancylostoma_small,
+    use="pairwise.complete.obs", method="spearman")
+
+devtools::source_gist("524eade46135f6348140",
+                      filename = "ggplot_smooth_func.R")
+
+pdf("figures/figures_Hyena/Figure2a_Ancylostoma.pdf")
+ggplot(All.data, aes(Rhabditida+1 , count_Ancylostoma+1,
+                     label=ID.Hyena)) +
+    geom_point() +
+    stat_smooth_func(geom="text", method="lm", hjust=0, parse=TRUE) +
+##    stat_smooth(method="lm", se=FALSE) +
+    scale_x_log10("Sequence abundance") +
+    scale_y_log10("FEC") +
+    ggtitle("Ancylostoma (Rhabditida)") +
+    theme_bw()
+dev.off()
+
+lm(log10(Rhabditida+1)~log10(count_Ancylostoma+1), data=All.data)
+
+glm(Rhabditida~count_Ancylostoma, data=All.data, family="poisson")
+
+Rhab.genera <- get.lower.in.hihger.tax("Order", "Rhabditida", "Genus")
+
+Rhab.counts <- colSums(All.data[, Rhab.genera])
+
+round(sort(Rhab.counts/sum(Rhab.counts)*100, decreasing=TRUE), 2)
+
+
+## Spirometra 
+cor(All.data$Diphyllobothriidea, All.data$count_Spirometra,
+    use="pairwise.complete.obs", method="spearman")
+
+cor(All.data$Spirometra, All.data$count_Spirometra,
+    use="pairwise.complete.obs", method="spearman")
+
+cor(All.data$Diphyllobothrium, All.data$count_Spirometra,
+    use="pairwise.complete.obs", method="spearman")
+
+
+pdf("figures/figures_Hyena/Figure2b_Spirometra.pdf")
+ggplot(All.data, aes(Diphyllobothriidea+1, count_Spirometra+1, label=ID.Hyena)) +
+    geom_point() +
+    stat_smooth_func(geom="text", method="lm", hjust=0, parse=TRUE) +
+    stat_smooth(method="lm", se=FALSE) +
+    scale_x_log10("Sequence Abundance") +
+    scale_y_log10("FEC") +
+    ggtitle("Spirometra (Diphyllobothriidea)")+
+    theme_bw()
+dev.off()
+
+Dip.genera <- get.lower.in.hihger.tax("Order", "Diphyllobothriidea", "Genus")
+
+Dip.counts <- colSums(All.data[, Dip.genera])
+
+round(sort(Dip.counts/sum(Dip.counts)*100, decreasing=TRUE), 2)
+
+range(All.data[All.data$count_Spirometra==0 & All.data$Diphyllobothriidea>0,
+               "Diphyllobothriidea"], na.rm=TRUE)
+
+
+## Cystoisospora misidentified as Eimeria
+cor(All.data$Cystoisospora, All.data$count_Cystoisospora,
+    use="pairwise.complete.obs", method="spearman")
+
+cor(All.data$Eimeria, All.data$count_Cystoisospora,
+    use="pairwise.complete.obs", method="spearman")
+
+## The two "Eimerias" help a little
+cor((All.data$Eimeria+ All.data$Eimeria.1), All.data$count_Cystoisospora,
+    use="pairwise.complete.obs", method="spearman")
+
+## Best combinations for "_small"
+cor((All.data$Eimeria +
+     All.data$Besnoitia  +
+     All.data$Toxoplasma),
+    All.data$count_Cystoisospora_small,
+    use="pairwise.complete.obs", method="spearman")
+
+cor((All.data$Eimeriidae +
+     All.data$Besnoitia  +
+     All.data$Toxoplasma),
+    All.data$count_Cystoisospora,
+    use="pairwise.complete.obs", method="pearson")
+
+### Best combinations for "2"
+cor(All.data$Eimeria.1,
+    All.data$count_Cystoisospora2,
+    use="pairwise.complete.obs", method="spearman")
+
+### Best combinations for "2"
+cor(All.data$Eimeria.1,
+    All.data$count_Cystoisospora2,
+    use="pairwise.complete.obs", method="pearson")
+
+All.data$Cocci.comb <- All.data$Eimeriidae +
+    All.data$Besnoitia +
+    All.data$Toxoplasma
+
+pdf("figures/figures_Hyena/Figure2c_Coccidia_small.pdf")
+ggplot(All.data, aes(Cocci.comb +1, 
+                     count_Cystoisospora_small+1, label=ID.Hyena)) +
+    geom_point() +
+    stat_smooth_func(geom="text", method="lm", hjust=0, parse=TRUE) +
+    stat_smooth(method="lm", se=FALSE) +
+    scale_x_log10("Sequence Abundance") +
+    scale_y_log10("FEC") +
+    ggtitle("Coccidia (small oocyst types)") +
+    theme_bw()
+dev.off()
+
+summary(lm(log10(count_Cystoisospora_small+1)~log10(Cocci.comb +1),
+           data=All.data))
+                     
+
+pdf("figures/Coccidia_larger.pdf")
+ggplot(All.data, aes(Eimeria.1+1, count_Cystoisospora2+1,
+                     label=ID.Hyena)) +
+    geom_point()+
+    stat_smooth_func(geom="text", method="lm", hjust=-1.5, parse=TRUE) +
+    stat_smooth(method="lm", se=FALSE) +
+    scale_x_log10("Sequence Abundance") +
+    scale_y_log10("FEC") +
+    ggtitle("Coccidia (large oocyst types)") +
+    theme_bw()
+dev.off()
+
+library(Biostrings)
+Cocci.PS <- subset_taxa(PS, Class %in% "Coccidia")
+Cocci_seq <- DNAStringSet(taxa_names(Cocci.PS))
+
+## overlook of taxonomic annotation
+cbind(table(tax_table(Cocci.PS)[, "Genus"]))
+
+names(Cocci_seq) <- make.names(tax_table(Cocci.PS)[, "Genus"],
+                               unique=TRUE)
+
+writeXStringSet(Cocci_seq, "out_data/Cocci_seq.fasta")
+
+Bes_seq <- DNAStringSet(taxa_names(subset_taxa(PS, Genus %in% "Besnoitia")))
+
+names(Bes_seq) <- paste0("Bes", 1:length(Bes_seq))
+
+writeXStringSet(Bes_seq, "out_data/Bes_seq.fasta")
+
+
+
+################ Richness, diversity and evenness ######################
+load(file="/SAN/Metabarcoding/phlyoSeq_Hy_rare.Rdata") # -> PS.rare,
+PS.r.genus <- tax_glom(PS.rare, "Genus", NArm = TRUE)
+
+test.Chao.rank <- function(ps){
+    mes <- c("Observed", "Chao1", "Shannon")
+    est <- estimate_richness(ps, measures=mes)
+    df <- merge(sample_data(ps), est, by=0)
+    df$pilou <- df$Shannon/log(df$Observed)
+
+    test.ric <- wilcox.exact(Observed ~ rank, data = df, exact = TRUE)
+    med.ric <- tapply(df$Observed, df$rank, median)
+    test.dif <- wilcox.exact(Chao1 ~ rank, data = df, exact = TRUE)
+    med.div <- tapply(df$Chao1, df$rank, median)
+    test.eve <- wilcox.exact(pilou ~ rank, data = df, exact = TRUE)
+    med.eve <- tapply(df$pilou, df$rank, median)
+    list(Obs.ric = list(W=test.ric$statistic, p.value=test.ric$p.value,
+                        med.high=med.ric["high"], med.low=med.ric["low"]),
+         Cha.div = list(W=test.dif$statistic, p.value=test.dif$p.value,
+                        med.high=med.div["high"], med.low=med.div["low"]),
+         Pil.eve = list(W=test.eve$statistic, p.value=test.eve$p.value,
+                        med.high=med.eve["high"], med.low=med.eve["low"]))
+}
+
+
+test.Chao.age <- function(ps){
+    mes <- c("Observed", "Chao1", "Shannon")
+    est <- estimate_richness(ps, measures=mes)
+    df <- merge(sample_data(ps), est, by=0)
+    df$pilou <- df$Shannon/log(df$Observed)
+
+    test.ric <- wilcox.exact(Observed ~ age, data = df, exact = TRUE)
+    test.dif <- wilcox.exact(Chao1 ~ age, data = df, exact = TRUE)
+    test.eve <- wilcox.exact(pilou ~ age, data = df, exact = TRUE)
+
+    test.ric <- wilcox.exact(Observed ~ age, data = df, exact = TRUE)
+    med.ric <- tapply(df$Observed, df$age, median)
+    test.dif <- wilcox.exact(Chao1 ~ age, data = df, exact = TRUE)
+    med.div <- tapply(df$Chao1, df$age, median)
+    test.eve <- wilcox.exact(pilou ~ age, data = df, exact = TRUE)
+    med.eve <- tapply(df$pilou, df$age, median)
+    list(Obs.ric = list(W=test.ric$statistic, p.value=test.ric$p.value,
+                        med.Adult=med.ric["Adult"], med.Cub=med.ric["Cub"]),
+         Cha.div = list(W=test.dif$statistic, p.value=test.dif$p.value,
+                        med.Adult=med.div["Adult"], med.Cub=med.div["Cub"]),
+         Pil.eve = list(W=test.eve$statistic, p.value=test.eve$p.value,
+                        med.Adult=med.eve["Adult"], med.Cub=med.eve["Cub"]))
+}
+
+do.call(rbind, test.Chao.rank(PS.rare))
+do.call(rbind, test.Chao.rank(PS.r.genus))
+
+PS.rare.E <- subset_taxa(PS.rare,
                          !Phylum %in% c(clear.prey.phyla, undef) &
-                         Kingdom %in% "Eukaryota"
-                         ))
+                         Kingdom %in% "Eukaryota")
 
-test.Chao(subset_taxa(PS.genus.na,
+do.call(rbind, test.Chao.rank(PS.rare.E))
+
+PS.rare.est <- estimate_richness(PS.rare.E, measures=c("Observed", "Chao1", "Shannon"))
+PS.rare.df <- merge(sample_data(PS.rare.E), PS.rare.est, by=0)
+PS.rare.df$pilou <- PS.rare.df$Shannon/log(PS.rare.df$Observed)
+PS.rare.mdf = reshape2::melt(PS.rare.df,
+                             measure.vars = c("Observed", "Chao1", "pilou"))
+
+pdf("figures/figures_Hyena/Figure4a_euk_rank_diversity_RSVs.pdf")
+ggplot(PS.rare.mdf, aes(rank, value)) +
+    geom_boxplot(na.rm = TRUE) +
+    theme_bw()+
+    theme(axis.text.x = element_text(angle = 45, vjust = 0, hjust = 0))+
+    ylab("Measure")+    
+    facet_wrap(~variable, nrow = 1, scales="free_y")+
+    ggtitle("Richness, diversity and evenness for rarified RSV counts")
+dev.off()
+
+
+do.call(rbind, test.Chao.rank(
+                   subset_taxa(PS.r.genus,
+                               !Phylum %in% c(clear.prey.phyla, undef) &
+                               Kingdom %in% "Eukaryota"
+                               )))
+
+PS.r.g.E <- subset_taxa(PS.r.genus,
                          !Phylum %in% c(clear.prey.phyla, undef) &
-                         Kingdom %in% "Eukaryota"
-                         ))
+                         Kingdom %in% "Eukaryota")
 
-test.Chao(subset_taxa(PS.genus,
-                         !Phylum %in% c(clear.prey.phyla, undef) &
-                         Kingdom %in% "Eukaryota"
-                         ))
+do.call(rbind, test.Chao.rank(PS.r.g.E))
 
+PS.r.g.est <- estimate_richness(PS.r.g.E, measures=c("Observed", "Chao1", "Shannon"))
+PS.r.g.df <- merge(sample_data(PS.r.g.E), PS.r.g.est, by=0)
+PS.r.g.df$pilou <- PS.r.g.df$Shannon/log(PS.r.g.df$Observed)
+PS.r.g.mdf = reshape2::melt(PS.r.g.df,
+                             measure.vars = c("Observed", "Chao1", "pilou"))
 
-test.Chao(subset_taxa(PS, Phylum %in% clear.parasite.phyla))
+pdf("figures/figures_Hyena/Figure4b_euk_rank_diversity_Generas.pdf")
+ggplot(PS.r.g.mdf, aes(rank, value)) +
+    geom_boxplot(na.rm = TRUE) +
+    theme_bw()+
+    theme(axis.text.x = element_text(angle = 45, vjust = 0, hjust = 0))+
+    ylab("Measure")+    
+    facet_wrap(~variable, nrow = 1, scales="free_y")+
+    ggtitle("Richness, diversity and evenness for rarified genus counts")
+dev.off()
 
-test.Chao(subset_taxa(PS.genus.na, Phylum %in% clear.parasite.phyla))
+do.call(rbind, test.Chao.rank(
+                   subset_taxa(PS.rare,
+                               Kingdom %in% "Bacteria"
+                               )))
 
-test.Chao(subset_taxa(PS.genus,Phylum %in% clear.parasite.phyla))
+do.call(rbind, test.Chao.rank(subset_taxa(
+                   PS.r.genus,
+                   Kingdom %in% "Bacteria"
+               )))
 
+do.call(rbind, test.Chao.rank(subset_taxa(
+                   PS.rare, Phylum %in% clear.parasite.phyla)))
 
-test.Chao(subset_taxa(PS, Phylum %in% clear.prey.phyla))
+do.call(rbind,
+        test.Chao.rank(subset_taxa(
+            PS.r.genus, Phylum %in% clear.parasite.phyla)))
 
-test.Chao(subset_taxa(PS, Phylum %in% plant.phyla))
+do.call(rbind,
+        test.Chao.rank(subset_taxa(
+            PS.r.genus, Phylum %in% clear.prey.phyla)))
 
+do.call(rbind,
+        test.Chao.rank(subset_taxa(
+            PS.r.genus, Phylum %in% plant.phyla)))
+
+## a post-hoc test for the phyla contributing to diversity differences
 
 subset_taxaE<- function (physeq, subset, ...) {
     if (is.null(tax_table(physeq))) {
@@ -102,884 +589,249 @@ subset_taxaE<- function (physeq, subset, ...) {
     }
 }
 
+test.phyla <- euk_phyla[!euk_phyla%in%spurious.phyla]
 
-Chao.phyla <- lapply(euk_phyla, function(x){
+Chao.phyla <- lapply(test.phyla, function(x){
+    ps <- subset_taxaE(PS.r.genus, tax_table(PS.r.genus)[, "Phylum"] %in% x)
+    tryCatch(do.call(rbind,test.Chao.rank(ps)), error = function (e) NULL)
+})
+
+names(Chao.phyla) <- test.phyla
+
+obs.order <- order(unlist(lapply(Chao.phyla, function (x) x["Obs.ric","p.value"])))
+
+names(Chao.phyla)[obs.order]
+
+chao.order <- order(unlist(lapply(Chao.phyla, function (x) x["Cha.div","p.value"])))
+
+names(Chao.phyla)[chao.order]
+
+
+########################## Bacteria for age
+
+## test.Chao.age(subset_taxa(PS,
+##                          Kingdom %in% "Bacteria"
+##                          ))
+
+## reporting for genera
+do.call(rbind, test.Chao.age(subset_taxa(PS.rare,
+                                         Kingdom %in% "Bacteria"
+                                         )))
+
+PS.r.g.B <- subset_taxa(PS.r.genus,
+                         Kingdom %in% "Bacteria")
+
+do.call(rbind, test.Chao.rank(PS.r.g.B))
+
+PS.r.gB.est <- estimate_richness(PS.r.g.B, measures=c("Observed", "Chao1", "Shannon"))
+PS.r.gB.df <- merge(sample_data(PS.r.g.B), PS.r.gB.est, by=0)
+PS.r.gB.df$pilou <- PS.r.gB.df$Shannon/log(PS.r.gB.df$Observed)
+PS.r.gB.mdf = reshape2::melt(PS.r.gB.df,
+                             measure.vars = c("Observed", "Chao1", "pilou"))
+
+pdf("figures/figures_Hyena/Figure3a_bak_age_diversity_Generas.pdf")
+ggplot(PS.r.gB.mdf, aes(age, value)) +
+    geom_boxplot(na.rm = TRUE) +
+    theme_bw()+
+    theme(axis.text.x = element_text(angle = 45, vjust = 0, hjust = 0))+
+    ylab("Measure")+    
+    facet_wrap(~variable, nrow = 1, scales="free_y")+
+    ggtitle("Richness, diversity and evenness for rarified genus counts")
+dev.off()
+
+
+
+
+bak_phyla <- names(table(tax_table(subset_taxa(PS.genus,
+                                               Kingdom %in% "Bacteria"))[, "Phylum"]))
+
+Chao.phyla.bak <- lapply(bak_phyla, function(x){
     ps <- subset_taxaE(PS.genus, tax_table(PS.genus)[, "Phylum"] %in% x)
-    ps
-    tryCatch(test.Chao(ps), error = function (e) NULL)
+    tryCatch(do.call(rbind, test.Chao.age(ps)), error = function (e) NULL)
 })
 
-names(Chao.phyla) <- euk_phyla
+names(Chao.phyla.bak) <- bak_phyla
 
-p.Chao <- lapply(Chao.phyla, function (x) {
-    x[c("statistic", "p.value")]
-})
+obs.order.bak <- order(unlist(lapply(Chao.phyla.bak, function (x) x["Obs.ric","p.value"])))
 
-names(p.Chao) <- euk_phyla
+names(Chao.phyla.bak)[obs.order.bak]
 
-p.Chao <- p.Chao[!unlist(lapply(p.Chao, is.null))]
+chao.order.bak <- order(unlist(lapply(Chao.phyla.bak, function (x) x["Cha.div","p.value"])))
 
-p.Chao.table <- data.frame(do.call(rbind, p.Chao))
+names(Chao.phyla.bak)[chao.order.bak]
 
-## p.Chao.table$FDR <- p.adjust(p.Chao.table$p.value, method="BH")
+Chao.phyla.bak[c("Tenericutes", "Actinobacteria","Bacteroidetes", "Firmicutes")]
+## Wow: Ten less in Cubs, Act more in Cubs, Bact less in Cubs
 
-p.Chao.table[p.Chao.table$p.value<0.05, ]
 
-## working with worm counts
-WC <- read.csv("/home/ele/Dropbox/Hyena_Hartmann_MS/Hyena_WormCounts_fixed.csv")
-
-colnames(WC)[2:ncol(WC)] <- paste0("count_", colnames(WC)[2:ncol(WC)])
-
-
-## For selected genera
-
-get.ps.counts <- function (ps, level){
-    Tax.tab <- otu_table(ps)
-    tax.cols <- unname(tax_table(ps)[, level])
-    colnames(Tax.tab) <- tax.cols
-    All.data <- cbind(sample_data(ps), Tax.tab)
-    list(merge(WC, All.data, by.x="ID.Hyena", by.y="Hyena.ID"), tax.cols)
-}
-    
-
-
-############# Untargeted #################
-get.top.cors <- function(ps, level){
-    psc<- get.ps.counts(ps, level)
-    foo <- psc[[1]]
-    tax.cols <- psc[[2]]
-    count.col <- grep("count_", colnames(foo), value=TRUE)
-    foo.cor <- data.frame(t(cor(foo[, count.col], foo[, tax.cols],
-                                use="pairwise.complete.obs")))
-    top.cors <- lapply(count.col, function (x){
-        head(foo.cor[order(foo.cor[,x], decreasing=TRUE), x, drop=FALSE], n=20)
-    })
-    names(top.cors) <- count.col
-    return(top.cors)
-}
-
-## runs for very long...
-## get.top.cors(PSA.genus, "Genus")
-
-get.top.cors(PS.genus, "Genus")
-
-get.top.cors(subset_taxa(PS.genus, Phylum %in%
-                                   c("Apicomplexa", "Platyhelminthes",
-                                     "Nematoda", "Microsporidia")),
-             "Genus")
-
-
-
-##count_Mite Hemialges  1.0000000
-
-##                             count_Cystoisospora2
-## Thoreauomyces                          0.8296620
-## Rurikoplites                           0.8296620
-## Coelomomyces                           0.8250951
-## Turicibacter                           0.8005079
-## Crenosoma                              0.7881375
-## Haemonchus                             0.7784763
-## Zoniolaimus                            0.7495413
-## Isospora                               0.7398843
-
-##                  count_Dipilydium
-## Adenocephalus         0.891580404
-## Amidostomum           0.750319752
-## Cryptosporidium       0.690625689
-## Leidyana              0.542524472
-## Gregarina             0.372994050
-## Dipylidium            0.323629188
-
-##                 count_Spirurida
-## Strongyloides        0.73909046
-
-##                  count_U_Mesocestoide
-## Caryospora                0.926864282
-## Eimeria                   0.925575434
-## Eimeria.1                 0.925575434
-
-##                   count_Taenia
-## Strongyloides       0.69137862
-
-
-##                   count_Taenia.45.
-## Anoplocephala           1.00000000
-## Apharyngostrigea        1.00000000
-## Austrodiplostomum       1.00000000
-## Neoctenotaenia          1.00000000
-
-##                  count_Cystoisospora2
-## Crenosoma                  0.78813753
-## Haemonchus                 0.77847627
-## Zoniolaimus                0.74954128
-## Isospora                   0.73988429
-
-##                count_Cystoisospora_small
-## Geneiorhynchus                0.86393186
-## Toxoplasma                    0.86392121
-## Besnoitia                     0.86290245
-## Besnoitia.1                   0.86290245
-## Gregarina                     0.71671086
-
-
-##                     count_Spirometra
-## Spirometra               0.679405146
-## Diphyllobothrium         0.591959397
-
-##                   count_Ancylostoma2
-## Anoplocephala             0.98986803
-## Apharyngostrigea          0.98986803
-## Austrodiplostomum         0.98986803
-## Neoctenotaenia            0.98986803
-## Moniezia                  0.98985348
-## Paraschneideria           0.98390109
-## Cylicocyclus              0.98205917
-## Petrovinema               0.90560644
-
-##                   count_Ancylostoma_small
-## Teladorsagia                    0.7734495
-## Enterocytozoon                  0.7734495
-## Ancylostoma                     0.4450958
-## Bothridium                      0.2963130
-
-
-
-ggplot(Tax.tab, aes(Ancylostoma+1, Ancylostoma_small+Ancylostoma2+1,
-                    label=V1)) +
-    geom_point() +
-    ##    geom_text()+
-    scale_x_log10("Sequence Abundance") +
-    scale_y_log10("Flotation Counts") +
-    ggtitle("Ancylostoma") 
-
-ggplot(Tax.tab, aes(Spirometra.x+1, Spirometra.y+1)) +
-    geom_point() +
-    scale_x_log10("Sequence Abundance") +
-    scale_y_log10("Flotation Counts") +
-    ggtitle("Spirometra")
-
-### for all genera
-
-
-
-## inspect the reported phyla
-lapply(ps.l, function(ps){
-    table(tax_table(ps)[, "Phylum"], exclude = NULL)
-})
-
-## remove otus without phylum level reported
-Phyl.ps.l <- lapply(ps.l, function (ps){
-    subset_taxa(ps, !is.na(Phylum) &
-                    !Phylum %in% c("", "undef", "uncharacterized"))
-})
-
-
-## Are there phyla that are comprised of mostly low-prevalence
-## features? Compute the total and average prevalences of the features
-## in each phylum.
-prevdf.l <- lapply(Phyl.ps.l, function (ps){
-   prev <- apply(X = otu_table(ps),
-                 MARGIN = ifelse(taxa_are_rows(ps), yes = 1, no = 2),
-                 FUN = function(x){sum(x > 0)})
-   prevTax <- data.frame(Prevalence = prev, 
-                         TotalAbundance = taxa_sums(ps),
-                         tax_table(ps))
-   return(prevTax)
-})
-
-
-lapply(prevdf.l, function(prevTax){
-    allAbu<- sum(prevTax$TotalAbundance)
-    plyr::ddply(prevTax, "Phylum", function(df1){
-        cbind(meanPrevalence=mean(df1$Prevalence),
-              maxPrevalence=max(df1$Prevalence),
-              TotAbund=sum(df1$TotalAbundance),
-              PercAbund=round((sum(df1$TotalAbundance)/allAbu)*100, 3)
-              )
-    })
-})
-
-
-## invest a bit more time here to look through those
-
-## exclude everything that apperars in less than prevalenceTreshold
-## samples (here 2) samples
-prevalenceThreshold <- 2
-
-## 
-TSps.l <- lapply(seq_along(prevdf.l), function(i){
-    keep <- rownames(prevdf.l[[i]])[(prevdf.l[[i]]$Prevalence >= prevalenceThreshold)]
-    prune_taxa(keep, Phyl.ps.l[[i]])
-})
-
-
-Gen.l <- mclapply(TSps.l, function (ps) {
-    tax_glom(ps, "Genus", NArm = TRUE)},
-    mc.cores=20)
-
-Dist.l <- mclapply(TSps.l, function (ps) {
-    tip_glom(ps, h=0.1)},
-    mc.cores=20)
-
-get.num.taxa <- function(x, level="Genus"){
-    length(get_taxa_unique(x, taxonomic.rank = level))
-}
-
-cbind(raw = lapply(ps.l, get.num.taxa),
-      wPhylum = lapply(Phyl.ps.l, get.num.taxa),
-      wPrev = lapply(TSps.l, get.num.taxa),
-      GenAgg = lapply(Gen.l, get.num.taxa),
-      DistAgg = lapply(Dist.l, get.num.taxa)
-      )
-
-## the latter are so few that we can  have a direct look:
-lapply(Gen.l, function(x) get_taxa_unique(x, taxonomic.rank = "Genus"))
-
-lapply(Dist.l, function(x) get_taxa_unique(x, taxonomic.rank = "Genus"))
-
-get.all.shannon <- function(ps){
-    Shan <- estimate_richness(ps, measures="Shannon")
-    x <- merge(sample_data(ps), Shan, by=0)
-    s <- t.test(Shannon ~ sex, data=x)$p.value
-    a <- t.test(Shannon ~ age, data=x)$p.value
-    r <- t.test(Shannon ~ rank, data=x)$p.value
-    n <- t.test(Shannon ~ rep, data=x)$p.value
-    Shannon.df <- cbind(sex=s, age=a,
-                        rank=r, rep=n)
-    return(Shannon.df)
-}
-
-
-do.call(rbind, lapply(ps.l, get.all.shannon))
-do.call(rbind, lapply(Phyl.ps.l, get.all.shannon))
-do.call(rbind, lapply(TSps.l, get.all.shannon))
-do.call(rbind, lapply(Gen.l, get.all.shannon))
-do.call(rbind, lapply(Dist.l, get.all.shannon))
-
-
-Shannon.df <- do.call(rbind, lapply(Phyl.ps.l, get.all.shannon))
-rownames(Shannon.df) <- names(ps.l)
-
-annotation <- merge(primer.overview, Shannon.df, by=0)
-rownames(annotation) <- annotation$Row.names
-annotation$Row.names <- NULL
-annotation$is.16.S <- ifelse(grepl("ADM|ACM|Klin", annotation$pRname), "16S", "18S")
-
-pdf("figures/shannon.pdf", onefile=FALSE)
-pheatmap(Shannon.df, cluster_cols=FALSE, cluster_rows=TRUE,
-         color = colorRampPalette(c("firebrick3", "navy"))(4),
-         breaks = 10^(0:-4),
-         show_rownames=FALSE,
-         legend = FALSE,
-         display_numbers=TRUE,
-         number_format = "%.1e",
-         annotation_row = annotation[, c(6, 7, 13)])
-dev.off()
-
-
-## one example of one bacterial amplicon
-ps.bak1 <- ps.l[[3]]
-
-pdf("figures/Bacteria_richnesSex.pdf", width=14, height=8)
-plot_richness(ps.bak1, x="sex") + theme_bw()  + geom_boxplot()
-dev.off()
-
-pdf("figures/Bacteria_richnesAge.pdf", width=14, height=8)
-plot_richness(ps.bak1, x="age") + theme_bw()  + geom_boxplot()
-dev.off()
-
-pdf("figures/Bacteria_richnesRank.pdf", width=14, height=8)
-plot_richness(ps.bak1, x="rank") + theme_bw()  + geom_boxplot()
-dev.off()
-
-pdf("figures/Bacteria_richnesPack.pdf", width=14, height=8)
-plot_richness(ps.bak1, x="pack") + theme_bw()  + geom_boxplot()
-dev.off()
-
-
-all.div.plots <- function(ps, what, annotation){
- pl <- plot_richness(ps, x=what, measures="Shannon") +
-     theme_bw()  +
-     geom_violin() +
-     ggtitle(annotation$pRnames)
- if(annotation$is.16.S%in%"18S"){
-     p <- pl + theme(strip.background = element_rect(fill="orange"))
- } else{
-     p <- pl + theme(strip.background = element_rect(fill="blue"))
- }
- if(as.numeric(as.character(annotation[, what]))<0.01){
-     p <- p + theme(panel.background = element_rect(fill = "palevioletred2"))
- } else {
-     p
- }
-}
-
-pdf("figures/richness_Rank.pdf", width=60, height=20)
-do.call("grid.arrange",
-        c(lapply(seq_along(ps.l), function (i) {
-            all.div.plots(ps.l[[i]], "rank", annotation[i,])
-        }),
-        ncol=10))
-dev.off()
-
-
-pdf("figures/richness_Age.pdf", width=60, height=20)
-do.call("grid.arrange",
-        c(lapply(seq_along(ps.l), function (i) {
-            all.div.plots(ps.l[[i]], "age", annotation[i,])
-        }),
-        ncol=10))
-dev.off()
-
-
-
-get.female.adult.subset <- function(ps){
-    dat <- sample_data(ps)
-    keep <- dat$sex%in%"Female" & dat$age%in%"Adult"
-    subset_samples(ps, keep)
-}
-
-FAps.l <- lapply(ps.l, get.female.adult.subset)
-FAPhyl.ps.l <- lapply(Phyl.ps.l, get.female.adult.subset)
-FATSps.l <- lapply(TSps.l, get.female.adult.subset)
-FAGen.l <- lapply(Gen.l, get.female.adult.subset)
-FADist.l <- lapply(Dist.l, get.female.adult.subset)
-
-
-pdf("figures/FArichness_Rank.pdf", width=60, height=20)
-do.call("grid.arrange",
-        c(lapply(seq_along(FAPhyl.ps.l), function (i) {
-            all.div.plots(FAPhyl.ps.l[[i]], "rank", annotation[i,])
-        }),
-        ncol=10))
-dev.off()
-
-
-get.shannon.lme <- function(ps){
-    Shan <- estimate_richness(ps, measures="Shannon")
-    x <- merge(sample_data(ps), Shan, by=0)
-    test <- lme(fixed = Shannon ~ rank + pack, data = x,
-                random = ~ 1 | Subject.ids)
-    s.test <- summary(test)
-    r.effect <- s.test$tTable["ranklow", "Value"]
-    r.pval <- s.test$tTable["ranklow", "p-value"]
-    a.test <- anova(test)
-    c.pval <- a.test$"p-value"[[3]]
-    Shannon.df <- cbind(r.low.effect=r.effect, r.pval=r.pval,
-                        c.pval=c.pval)
-    return(Shannon.df)
-}
-
-
-do.call(rbind, lapply(FAps.l, get.shannon.lme))
-do.call(rbind, lapply(FAPhyl.ps.l, get.shannon.lme))
-do.call(rbind, lapply(FATSps.l, get.shannon.lme))
-do.call(rbind, lapply(FAGen.l, get.shannon.lme))
-do.call(rbind, lapply(FADist.l, get.shannon.lme))
-
-Shannon.df <- do.call(rbind, lapply(FAps.l, get.shannon.lme))
-rownames(Shannon.df) <- names(ps.l)
-
-annotation <- merge(primer.overview, Shannon.df, by=0)
-rownames(annotation) <- annotation$Row.names
-annotation$Row.names <- NULL
-annotation$is.16.S <- ifelse(grepl("ADM|ACM|Klin", annotation$pRname), "16S", "18S")
-
-lme.div.plots <- function(ps, annotation){
- pl <- plot_richness(ps, x="rank", measures="Shannon") +
-     theme_bw()  +
-     geom_boxplot() +
-     ggtitle(annotation$pRnames)
- if(annotation$is.16.S%in%"18S"){
-     p <- pl + theme(strip.background = element_rect(fill="orange"))
- } else{
-     p <- pl + theme(strip.background = element_rect(fill="blue"))
- }
- if(as.numeric(as.character(annotation$r.pval))<0.05){
-     p <- p + theme(panel.background = element_rect(fill = "palevioletred2"))
- } else {
-     p
- }
-}
-
-pdf("figures/LMErichness_Rank.pdf", width=60, height=20)
-do.call("grid.arrange",
-        c(lapply(seq_along(FAps.l), function (i) {
-            lme.div.plots(FAps.l[[i]], annotation[i,])
-        }),
-        ncol=10))
-dev.off()
-
-lapply(FAps.l,  function(ps){
-    tab <- table(tax_table(ps)[,2])
-    tab[order(tab)]
-})
-
-
-Para.ps.l <- lapply(FAps.l, function(ps){
-    tryCatch(
-        subset_taxa(ps, Phylum %in% c("Apicomplexa", "Platyhelminthes",
-                                      "Nematoda")),
-        error = function(e) NULL)
-})
-
-do.call(rbind, lapply(Para.ps.l, function(ps){
-    tryCatch(get.shannon.lme(ps),
-             error = function (e) NA)
-}))
-
-
-pdf("figures/Parasite_richnesRank43.pdf", width=14, height=8)
-plot_richness(Para.ps.l[[43]], x="rank") + theme_bw()  + geom_boxplot()
-dev.off()
-
-pdf("figures/Parasite_richnesRank45.pdf", width=14, height=8)
-plot_richness(Para.ps.l[[45]], x="rank") + theme_bw()  + geom_boxplot()
-dev.off()
-
-NonPrey.ps.l <- lapply(FAps.l, function(ps){
-    tryCatch(
-        subset_taxa(ps, !Phylum %in% c("Chordata", "Vertebrata", 
-        "Chlorophyta_ph", "Phragmoplastophyta",
-        "Streptophyta", "Chlorophyta", "Arthropoda",
-        "", "undef")),
-        error = function(e) NULL)
-})
-
-do.call(rbind, lapply(NonPrey.ps.l, function(ps){
-    tryCatch(get.shannon.lme(ps),
-             error = function (e) NA)
-}))
-
-Prey.ps.l <- lapply(FAps.l, function(ps){
-    tryCatch(
-        subset_taxa(ps, Phylum %in% c("Chordata", "Vertebrata")),
-        error = function(e) NULL)
-})
-
-do.call(rbind, lapply(Prey.ps.l, function(ps){
-    tryCatch(get.shannon.lme(ps),
-             error = function (e) NA)
-}))
-
-sapply(get_taxa_unique(FAps.l[[43]], "Phylum"), function (p) {
-    p <- "Apicomplexa"
-    p.sub <- subset_taxa(FAps.l[[43]], Phylum%in%"Apicomplexa")
-    sum(otu_table(p.sub))
-})
+## Bacteria for Sex ... not reported as not able to disentangle from
+## age
 
 
 ################### ORDINATIONS ##################
-
 ## log transformaitons on sample counts 
 ## lets go direclty for the subsetted data
-log.ps.l <- lapply(FAps.l, transform_sample_counts, function(x) log(1 + x))
-log.Phyl.ps.l <- lapply(FAPhyl.ps.l, transform_sample_counts, function(x) log(1 + x))
-log.TSps.l <- lapply(FATSps.l, transform_sample_counts, function(x) log(1 + x))
-log.Gen.l <- lapply(FAGen.l, transform_sample_counts, function(x) log(1 + x))
-log.Dist.l <- lapply(FADist.l, transform_sample_counts, function(x) log(1 + x))
 
-## some of the amplicons give errors
-ord.works <- c(1:3, 5:10, 12:18, 20:30, 32, 34:36, 40, 41, 43:48)
+## BACTERIA #### FOR AGE:
+logBAC <- transform_sample_counts(
+    subset_taxa(PS.genus, Kingdom%in%"Bacteria"),
+    function(x) log10(1+x))
 
-## for the moment only interested in 16s
-amp.16S <- which(annotation$is.16.S%in%"16S")
-# for  4 it does not work somehow...
-amp.16S <- c(3, 5,13)
+out.bc.log <- ordinate(logBAC, method = "NMDS", distance = "bray")
 
-
-get.ord.plot <- function(ps, meth = "MDS", dist = "bray"){
-    or <- ordinate(ps, method = meth, distance = dist)
-    evals <- or$eig
-    plot_ordination(ps, or, color = "rank",
-                    shape = "pack") +
-        theme_bw()
-}
-
-logBC.l <- lapply(log.ps.l[amp.16S], get.ord.plot)
-logSSBC.l <- lapply(log.Phyl.ps.l[amp.16S], get.ord.plot)
-logTSBC.l <- lapply(log.TSps.l[amp.16S], get.ord.plot)
-logGenBC.l <- lapply(log.Gen.l[amp.16S], get.ord.plot)
-logDistBC.l <- lapply(log.Dist.l[amp.16S], get.ord.plot)
-
-pdf("figures/ordinate1.pdf", width=15, height=7)
-do.call("grid.arrange", c(logBC.l, ncol=2))
+devSVG("figures/figures_Hyena/Figure3b_Ord_bac.svg")
+plot_ordination(logBAC, out.bc.log, color = "age") +
+    labs(col = "Binned Age") +
+    theme_bw() +
+    ggtitle("Ordination on log 1+x transformed abundance of bacterial genera")
 dev.off()
-
-pdf("figures/ordinate2.pdf", width=15, height=7)
-do.call("grid.arrange", c(logSSBC.l, ncol=2))
-dev.off()
-
-pdf("figures/ordinate3.pdf", width=15, height=7)
-do.call("grid.arrange", c(logTSBC.l, ncol=2))
-dev.off()
-
-pdf("figures/ordinate4.pdf", width=15, height=7)
-do.call("grid.arrange", c(logGenBC.l, ncol=2))
-dev.off()
-
-pdf("figures/ordinate5.pdf", width=15, height=7)
-do.call("grid.arrange", c(logDistBC.l, ncol=2))
-dev.off()
-
-logWUF.l <- lapply(log.ps.l[amp.16S], get.ord.plot,
-                   meth="PCoA" , dist="wunifrac")
-
-logSSWUF.l <- lapply(log.Phyl.ps.l[amp.16S], get.ord.plot,
-                     meth="PCoA" , dist="wunifrac")
-
-logTSWUF.l <- lapply(log.TSps.l[amp.16S], get.ord.plot,
-                     meth="PCoA" , dist="wunifrac")
-
-logGenWUF.l <- lapply(log.Gen.l[amp.16S], get.ord.plot,
-                      meth="PCoA" , dist="wunifrac")
-
-logDistWUF.l <- lapply(log.Dist.l[amp.16S], get.ord.plot,
-                       meth="PCoA" , dist="wunifrac")
-
-pdf("figures/ordinate6.pdf", width=15, height=7)
-do.call("grid.arrange", c(logWUF.l, ncol=2))
-dev.off()
-
-pdf("figures/ordinate7.pdf", width=15, height=7)
-do.call("grid.arrange", c(logSSWUF.l, ncol=2))
-dev.off()
-
-pdf("figures/ordinate8.pdf", width=15, height=7)
-do.call("grid.arrange", c(logTSWUF.l, ncol=2))
-dev.off()
-
-pdf("figures/ordinate9.pdf", width=15, height=7)
-do.call("grid.arrange", c(logGenWUF.l, ncol=2))
-dev.off()
-
-pdf("figures/ordinate10.pdf", width=15, height=7)
-do.call("grid.arrange", c(logDistWUF.l, ncol=2))
-dev.off()
-
-
-## ## Check ccpna
-## ordX <- lapply(log.ps.l, function(ps){
-##     ps.ccpna <- ordinate(ps, "CCA", formula = ps ~ rank + pack)
-##     ps.scores <- vegan::scores(ps.ccpna)
-##     sites <- data.frame(ps.scores$sites)
-##     sites$SampleID <- rownames(sites)
-##     sites <- merge(sites, sample_data(ps), by=0, all.x=TRUE)
-##     species <- data.frame(ps.scores$species)
-##     species$otu_id <- seq_along(colnames(otu_table(ps)))
-##     species <- left_join(species, tax)
-##     evals_prop <- 100 * (ranks_pca$eig / sum(ranks_pca$eig))
-##     ggplot() +
-##         geom_point(data = row_scores,
-##                    aes(x = li.Axis1, y = li.Axis2), shape = 2) +
-##         geom_point(data = col_scores,
-##                    aes(x = 25 * co.Comp1, y = 25 * co.Comp2, col = Order),
-##                    size = .3, alpha = 0.6) +
-##         scale_color_brewer(palette = "Set2") +
-##         facet_grid(~ rank) +
-##         guides(col = guide_legend(override.aes = list(size = 3))) +
-##         labs(x = sprintf("Axis1 [%s%% variance]", round(evals_prop[1], 2)),
-##              y = sprintf("Axis2 [%s%% variance]", round(evals_prop[2], 2))) +
-##         coord_fixed(sqrt(ranks_pca$eig[2] / ranks_pca$eig[1])) +
-##         theme(panel.border = element_rect(color = "#787878",
-##                                           fill = alpha("white", 0)))
-## })
 
 ## ## Supervised learning
 library(caret)
 
-predict.pls <- function(pslog, method){
-    dataMatrix <- data.frame(rank = sample_data(pslog)$rank, otu_table(pslog))
-    ## take 20 mice at random to be the training set, and the remaining 24
-    ## the test set
-    trainingHyena <- sample(unique(sample_data(pslog)$Subject), size = 20)
-    inTrain <- which(sample_data(pslog)$Subject %in% trainingHyena)
-    training <- dataMatrix[inTrain,]
-    testing <- dataMatrix[-inTrain,]
-    plsFit <- train(rank ~ ., data = training,
-                    method = method, preProc = "center")
-    plsClasses <- predict(plsFit, newdata = testing)
-    table(plsClasses, testing$rank)
+dataMatrixBac <- data.frame(age = sample_data(logBAC)$age,
+                            otu_table(logBAC))
+plsFitBac <- train(age ~ ., data = dataMatrixBac,
+                   method = "pls", preProc= "center",
+                   trControl = trainControl(method = "LOOCV"))
+
+pls_biplot_Bac <- list("loadings" = loadings(plsFitBac$finalModel),
+                       "scores" = scores(plsFitBac$finalModel))
+class(pls_biplot_Bac$scores) <- "matrix"
+
+pls_biplot_Bac$scores <- data.frame(sample_data(logBAC),
+                                    pls_biplot_Bac$scores)
+
+tax <- data.frame(tax_table(logBAC), stringsAsFactors = FALSE)
+main_phyla <- c("Tenericutes", "Actinobacteria","Bacteroidetes", "Firmicutes")
+
+tax$Phylum[!(tax$Phylum %in% main_phyla)] <- "Other"
+tax$Order <- factor(tax$Order, levels = c(main_phyla, "Other"))
+class(pls_biplot_Bac$loadings) <- "matrix"
+pls_biplot_Bac$loadings <- data.frame(tax, pls_biplot_Bac$loadings)
+
+pdf("figures/figures_Hyena/Figure3c_pls_bi_bac.pdf")
+ggplot() +
+    geom_point(data = pls_biplot_Bac$loadings,
+               aes(x = 25 * Comp.1, y = 25 * Comp.2, col = Phylum),
+               size = 1) +
+    geom_point(data = pls_biplot_Bac$scores,
+               aes(x = Comp.1, y = Comp.2, shape = age), size = 3) +
+    scale_color_brewer(palette = "Set2") +
+    scale_shape_discrete(solid=FALSE) +
+    labs(x = "Axis1", y = "Axis2", col = "Phylum") +
+    guides(col = guide_legend(override.aes = list(size = 3))) +
+    theme_bw()
+##    theme(panel.border = element_rect(color = "#787878", fill = alpha("white", 0)))
+dev.off()
+
+
+## differences by phyla
+library(DESeq2)
+Bac.diagdds <- phyloseq_to_deseq2(subset_taxa(PS.genus, Kingdom%in%"Bacteria"), ~ age)
+Bac.diagdds <- DESeq(Bac.diagdds, test="Wald", fitType="parametric")
+
+Bac.res <- results(Bac.diagdds, cooksCutoff = FALSE)
+alpha <- 0.05
+Bac.sigtab <- Bac.res[which(Bac.res$padj < alpha), ]
+Bac.sigtab <- cbind(as(Bac.sigtab, "data.frame"), as(tax_table(PS.genus)[rownames(Bac.sigtab), ], "matrix"))
+rownames(Bac.sigtab) <- NULL
+Bac.sigtab
+
+library(scales)
+
+get.sigtab.plot <- function (sigtab){
+    x <- tapply(sigtab$log2FoldChange, sigtab$Phylum, function(x) max(x))
+    x <- sort(x, TRUE)
+    sigtab$Phylum <- factor(as.character(sigtab$Phylum), levels=names(x))
+                                        # Genus order
+    x <- tapply(sigtab$log2FoldChange, sigtab$Genus, function(x) max(x))
+    x <- sort(x, TRUE)
+    sigtab$Genus <- factor(as.character(sigtab$Genus), levels=names(x))
+    ggplot(sigtab, aes(x=Genus, y=log2FoldChange, color=Phylum, label=scientific(padj))) +
+        geom_point(size=6) +
+        geom_text(vjust=1.6)+
+        theme_bw()+
+        theme(axis.text.x = element_text(angle = -45, hjust = 0, vjust=1))
 }
 
-PLS <- lapply(log.Gen.l[c(1, 16:18)], predict.pls, "pls")
+plot.bacterial.diff <- get.sigtab.plot(Bac.sigtab)
 
-PLS
-
-## [[1]]
-          
-## plsClasses high low
-##       high   16  12
-##       low     5   8
-
-## [[2]]
-          
-## plsClasses high low
-##       high    7   4
-##       low    17  13
-
-## [[3]]
-          
-## plsClasses high low
-##       high   14   9
-##       low     8  10
-
-## [[4]]
-          
-## plsClasses high low
-##       high   14  12
-##       low     8   7
+devSVG("figures/figures_Hyena/Figure3d_single_diff.svg")
+plot.bacterial.diff
+dev.off()
 
 
+######################### Eukaryotes ############################
 
-RF <- lapply(log.TSps.l[c(1, 16:18)], predict.pls, "rf")
-
-RF
-
-## [[1]]
-          
-## plsClasses high low
-##       high   13   4
-##       low    13  11
-
-## [[2]]
-          
-## plsClasses high low
-##       high    0   0
-##       low    26  15
-
-## [[3]]
-          
-## plsClasses high low
-##       high   11  10
-##       low    12   8
-
-## [[4]]
-          
-## plsClasses high low
-##       high    6   4
-##       low    17  14
+logEuk <- transform_sample_counts(
+    subset_taxa(PS.genus, Kingdom%in%"Eukaryota"&
+                    !Phylum%in%clear.prey.phyla),
+    function(x) log10(1+x))
 
 
+dataMatrixEuk <- data.frame(age = sample_data(logEuk)$age,
+                            rank = sample_data(logEuk)$rank,
+                            otu_table(logEuk))
 
-################## hierarchical testing ###############
-get.hier.test <- function(ps){
-    ## ## Playing with DEseq2
-    ## ps_dds <-  phyloseq_to_deseq2(ps, ~ rank + pack)
-    ## ts <- counts(ps_dds)
-    ## geoMeans <- apply(ts, 1, function(row) {
-    ##     if (all(row == 0)) 0 else exp(mean(log(row[row != 0])))
-    ## })
-    ## ps_dds <- estimateSizeFactors(ps_dds, geoMeans=geoMeans)
-    ## ps_dds <- estimateDispersions(ps_dds)
-    ## abund <- getVarianceStabilizedData(ps_dds)
-    abund <- t(otu_table(ps))
-    short_names <- make.names(substr(rownames(abund), 1, 5),
-                              unique=TRUE)
-    rownames(abund) <- short_names
-    el <- phy_tree(ps)$edge
-    el0 <- el
-    el0 <- el0[nrow(el):1, ]
-    el_names <- c(short_names, seq_len(phy_tree(ps)$Nnode))
-    el[, 1] <- el_names[el0[, 1]]
-    el[, 2] <- el_names[as.numeric(el0[, 2])]
-    unadj_p <- treePValues(el, abund, sample_data(ps)$rank)
-    ## Warning: essentially perfect fit: summary may be unreliable
-    hfdr_res <- hFDR.adjust(unadj_p, el, 0.99)
-    tax <- data.frame(tax_table(ps)[, c("Family", "Genus")])
-    tax$seq <- short_names
-    hfdr_res@p.vals$seq <- rownames(hfdr_res@p.vals)
-    lj <- left_join(tax, hfdr_res@p.vals)
-    head(arrange(lj, adjp), n=50)
-}
+plsFitEuk <- train(rank ~ ., data = dataMatrixEuk,
+                   method = "pls", preProc= "center",
+                   trControl = trainControl(method = "LOOCV"))
 
-## for a full test
-##
-## XYZ <- mclapply(log.ps.l, tryCatch(get.hier.test, error = function
-##                 (e) NA), mc.cores=20)
-##
-## which might not make sense as we are interested in things with a
-## clear annotation here anyways
+pls_biplot_Euk <- list("loadings" = loadings(plsFitEuk$finalModel),
+                       "scores" = scores(plsFitEuk$finalModel))
+class(pls_biplot_Euk$scores) <- "matrix"
 
-tests.gen.coll <- mclapply(log.Gen.l, tryCatch(get.hier.test, error = function (e) NA),
-                           mc.cores=20)
+pls_biplot_Euk$scores <- data.frame(sample_data(logEuk),
+                                    pls_biplot_Euk$scores)
 
-lapply(tests.gen.coll, function (x) x[x$adjp<0.05& !is.na(x$adjp),])
+tax <- data.frame(tax_table(logEuk), stringsAsFactors = FALSE)
 
-## ## Not so
-## [[17]]
-##                      Family                        Genus      seq       unadjp        adjp
-## 1           Eggerthellaceae                      Slackia CAGTG.24 0.0001681410 0.000336282
-## 2       Erysipelotrichaceae  Erysipelotrichaceae_UCG-001  CAGTA.6 0.0005669904 0.001133981
-## 3     Peptostreptococcaceae                   Romboutsia CAGTG.30 0.0067334885 0.013466977
-## 4 Bacteroidales_S24-7_group Bacteroidales_S24-7_group_ge CAGTG.38 0.0135579717 0.027115943
-## 5       Erysipelotrichaceae  Erysipelotrichaceae_UCG-004  CAGTA.7 0.0159865623 0.031973125
+main_phyla <- c("Basidiomycota", "Ascomycota", "Blastocladiomycota",
+                "Apicomplexa", "Ochrophyta", "Cercozoa", "Ciliophora",
+                "Nematoda")
 
-## Slackia:
-## Couple of papers, among them: Characterization of Slackia exigua
-## isolated from human wound infections, including abscesses of
-## intestinal origin
+tax$Phylum[!(tax$Phylum %in% main_phyla)] <- "Other"
 
-## Erysipelotrichaceae: 
-## Wikipedia Erysipelotrichia are a class of bacteria of the phylum
-## Firmicutes. Species of this class are known to be common in the gut
-## microbiome, as they have been isolated from swine manure [1] and
-## increase in composition of the mouse gut microbiome for mice
-## switched to diets high in fat.[2]
+tax$Phylum <- factor(tax$Phylum, levels = c(main_phyla, "Other"))
 
-## Romboutsia
-##  bacterium isolated from the right human colon by colonoscopy in a
-## 63-year-old French man with severe anaemia with melaena.
+class(pls_biplot_Euk$loadings) <- "matrix"
+pls_biplot_Euk$loadings <- merge(tax, pls_biplot_Euk$loadings, by=0)
 
-## Bacteroidales_S24-7:
-## representatives constitute a substantial component of the murine
-## gut microbiota, as well as being present within the human gut
+colnames(pls_biplot_Euk$loadings) <-
+    make.names(colnames(pls_biplot_Euk$loadings))
+
+pdf("figures/figures_Hyena/Figure4c_pls_bi_euk.pdf", width=5, height=10)
+ggplot() +
+    geom_jitter(data = pls_biplot_Euk$loadings,
+                aes(x="1", y = 25 * Comp.1 , col = Phylum), size = 1) +
+    geom_jitter(data = pls_biplot_Euk$scores,
+               aes(x="1",y = Comp.1, shape=rank), size=4) +
+    scale_color_brewer(palette = "Set1") +
+    labs(y = "Sinlge Axis 1", col = "Phylum", x = "") +
+    scale_shape_discrete(solid=FALSE) +
+    guides(col = guide_legend(override.aes = list(size = 3))) +
+    ##    theme(panel.border = element_rect(color = "#787878", fill = alpha("white", 0)))
+    theme_bw()
+dev.off()
 
 
+## Eukaryote single genus differences
+PS.female.euk <- subset_samples(
+    subset_taxa(PS.genus, Kingdom%in%"Eukaryota"), age%in%"Adult")
 
-table(rowSums(otu_table(subset_taxa(log.Gen.l[[17]], Genus%in%"Slackia")))>0,
-      sample_data(log.Gen.l[[4]])$rank)
+Euk.diagdds <- phyloseq_to_deseq2(PS.female.euk, ~ rank)
+Euk.diagdds <- DESeq(Euk.diagdds, test="Wald", fitType="parametric")
 
-##       high low
-## FALSE    9  20
-## TRUE    24   8
+Euk.res <- results(Euk.diagdds, cooksCutoff = FALSE)
+alpha <- 0.05
+Euk.sigtab <- Euk.res[which(Euk.res$padj < alpha), ]
+Euk.sigtab <- cbind(as(Euk.sigtab, "data.frame"), as(tax_table(PS.genus)[rownames(Euk.sigtab), ], "matrix"))
+rownames(Euk.sigtab) <- NULL
+Euk.sigtab
 
-table(rowSums(otu_table(subset_taxa(log.Gen.l[[17]], Genus%in%"Slackia"))),
-      sample_data(log.Gen.l[[4]])$rank)
+plot.euk.diff <- get.sigtab.plot(Euk.sigtab)
 
-##                  high low
-## 0                   9  20
-## 1.09861228866811    1   0
-## 1.6094379124341     2   1
-## 2.07944154167984    1   0
-## 2.19722457733622    3   1
-## 2.30258509299405    3   2
-## 2.39789527279837    1   2
-## 2.56494935746154    0   1
-## 2.63905732961526    2   1
-## 2.77258872223978    3   0
-## 2.99573227355399    1   0
-## 3.29583686600433    1   0
-## 3.3322045101752     1   0
-## 3.40119738166216    2   0
-## 3.43398720448515    1   0
-## 3.52636052461616    1   0
-## 3.76120011569356    1   0
-
-table(rowSums(otu_table(subset_taxa(log.Gen.l[[17]],
-                                    Genus%in%"Erysipelotrichaceae_UCG-001")))>0,
-      sample_data(log.Gen.l[[4]])$rank)
-
-##       high low
-## FALSE   15  24
-## TRUE    18   4
-
-
-table(rowSums(otu_table(subset_taxa(log.Gen.l[[17]],
-                                    Genus%in%"Erysipelotrichaceae_UCG-001"))),
-      sample_data(log.Gen.l[[4]])$rank)
-
-##                  high low
-## 0                  15  24
-## 1.6094379124341     2   0
-## 1.79175946922805    2   1
-## 1.94591014905531    4   1
-## 2.07944154167984    1   2
-## 2.19722457733622    1   0
-## 2.30258509299405    3   0
-## 2.484906649788      2   0
-## 2.56494935746154    2   0
-## 2.77258872223978    1   0
-
-
-table(rowSums(otu_table(subset_taxa(log.Gen.l[[17]],
-                                    Genus%in%"Romboutsia")))>0,
-      sample_data(log.Gen.l[[4]])$rank)
-
-##       high low
-## FALSE   31  19
-## TRUE     2   9
-
-table(rowSums(otu_table(subset_taxa(log.Gen.l[[17]],
-                                    Genus%in%"Romboutsia"))),
-      sample_data(log.Gen.l[[4]])$rank)
-
-##                  high low
-## 0                  31  19
-## 2.07944154167984    0   1
-## 2.19722457733622    0   1
-## 2.70805020110221    1   0
-## 2.83321334405622    0   1
-## 2.99573227355399    1   0
-## 3.09104245335832    0   1
-## 3.13549421592915    0   1
-## 3.40119738166216    0   1
-## 3.66356164612965    0   1
-## 3.87120101090789    0   1
-## 3.97029191355212    0   1
-
-
-
-table(rowSums(otu_table(subset_taxa(log.Gen.l[[17]],
-                                    Genus%in%"Bacteroidales_S24-7_group_ge")))>0,
-      sample_data(log.Gen.l[[4]])$rank)
-
-##       high low
-## FALSE   32  22
-## TRUE     1   6
-
-
-table(rowSums(otu_table(subset_taxa(log.Gen.l[[17]],
-                                    Genus%in%"Bacteroidales_S24-7_group_ge"))),
-      sample_data(log.Gen.l[[4]])$rank)
-
-##                   high low
-## 0                   32  22
-## 0.693147180559945    1   1
-## 1.79175946922805     0   2
-## 2.30258509299405     0   1
-## 2.70805020110221     0   1
-## 3.36729582998647     0   1
-
-
-
-table(rowSums(otu_table(subset_taxa(log.Gen.l[[17]],
-                                    Genus%in%"Erysipelotrichaceae_UCG-004")))>0,
-      sample_data(log.Gen.l[[4]])$rank)
-
-##       high low
-## FALSE   29  18
-## TRUE     4  10
-
-table(rowSums(otu_table(subset_taxa(log.Gen.l[[17]],
-                                    Genus%in%"Erysipelotrichaceae_UCG-004"))),
-      sample_data(log.Gen.l[[4]])$rank)
-
-##                  high low
-## 0                  29  18
-## 1.38629436111989    0   2
-## 1.6094379124341     2   0
-## 1.79175946922805    0   1
-## 2.19722457733622    0   1
-## 2.484906649788      1   1
-## 2.56494935746154    0   1
-## 2.63905732961526    1   0
-## 3.2188758248682     0   1
-## 3.29583686600433    0   1
-## 4.4188406077966     0   1
-## 4.49980967033027    0   1
-
-
-
-tests.dist.coll <- mclapply(log.Dist.l, tryCatch(get.hier.test, error = function (e) NA),
-                            mc.cores=20)
-
-lapply(tests.dist.coll, function (x) x[x$adjp<0.05& !is.na(x$adjp),])
-
-the.test <- lapply(tests.gen.coll,
-                   function (x) x[x$adjp<0.05& !is.na(x$adjp),])
-## Linguatula
-
-
-
-
+devSVG("figures/figures_Hyena/Figure4d_single_diff.svg")
+plot.euk.diff
+dev.off()

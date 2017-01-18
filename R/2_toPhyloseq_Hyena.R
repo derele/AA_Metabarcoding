@@ -80,8 +80,6 @@ sum.columns <- function(ps){
 ## mean between replicates
 SumRSVs <- sum.columns(PSA)
 
-nrow()
-
 sum.subject.df <- subject.df[!duplicated(subject.df$Hyena.ID), ]
 sum.subject.df$Sample.ID <- NULL
 sum.subject.df$rep <- NULL
@@ -91,4 +89,23 @@ PS <- phyloseq(otu_table(SumRSVs, taxa_are_rows=FALSE),
                sample_data(sum.subject.df),
                tax_table(all.tax))
 
+## ################  rarify ############################
+set.seed(123)
+
+min_lib <- min(sample_sums(PS))
+nsamp <- nsamples(PS)
+
+PS.rare <- rarefy_even_depth(PS, sample.size = min_lib, verbose = FALSE, replace = TRUE)
+
+save(PS.rare, file="/SAN/Metabarcoding/phlyoSeq_Hy_rare.Rdata")
+
+## ##############  normalize #####################
+MED <- median(rowSums(otu_table(PS)))
+FAC <- MED/rowSums(otu_table(PS))
+
+otu_table(PS) <- round(otu_table(PS)*FAC)
+
 save(PS, file="/SAN/Metabarcoding/phlyoSeq_Hy.Rdata")
+
+
+
