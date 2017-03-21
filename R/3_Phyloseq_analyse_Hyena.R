@@ -49,6 +49,14 @@ PS <- subset_taxa(PS, Kingdom %in% c("Bacteria", "Eukaryota"))
 
 PS.genus <- tax_glom(PS, "Genus", NArm = TRUE)
 
+Genus_table <- cbind(tax_table(PS.genus), t(otu_table(PS.genus)))
+rownames(Genus_table) <- NULL
+
+write.csv(Genus_table,
+          "/home/ele/Genus_abundance_table_export.csv", quote=FALSE,
+          row.names=FALSE)
+
+
 PS.phylum <- tax_glom(PS, "Phylum", NArm = TRUE)
 
 PS.class <- tax_glom(PS, "Class", NArm = TRUE)
@@ -195,7 +203,7 @@ unname(tax_table(subset_taxa(PS.genus, Phylum %in% clear.prey.phyla))[, "Genus"]
 ## working with worm counts ####################################################
 ######## WC - Worm Counts ######################################################
 ################################################################################
-WC <- read.csv("/home/ele/Dropbox/Hyena_Hartmann_MS/Hyena_WormCounts_fixed.csv",
+WC <- read.csv("/home/ele/Documents/Hyena_Hartmann_MS/Hyena_WormCounts_fixed.csv",
                as.is=TRUE)
 
 colnames(WC)[2:ncol(WC)] <- paste0("count_", colnames(WC)[2:ncol(WC)])
@@ -268,20 +276,12 @@ spear.cor <- data.frame(t(cor(All.data[, count.col], All.data[, tax.cols],
                               method="spearman",
                               use="pairwise.complete.obs")))
 
-pear.cor <- data.frame(t(cor(All.data[, count.col], All.data[, tax.cols],
-                              method="pearson",
-                              use="pairwise.complete.obs")))
 
 top.cors.spear <- lapply(count.col, function (x){
         head(spear.cor[order(spear.cor[,x], decreasing=TRUE), x, drop=FALSE], n=10)
 })
 
-top.cors.pear <- lapply(count.col, function (x){
-        head(pear.cor[order(pear.cor[,x], decreasing=TRUE), x, drop=FALSE], n=10)
-})
-
 names(top.cors.spear) <- count.col
-names(top.cors.pear) <- count.col
 
 ## Ancylostoma
 cor(All.data$Rhabditida, All.data$count_Ancylostoma_small,
@@ -322,14 +322,18 @@ round(sort(Rhab.counts/sum(Rhab.counts)*100, decreasing=TRUE), 2)
 
 
 ## Spirometra 
-cor(All.data$Diphyllobothriidea, All.data$count_Spirometra,
-    use="pairwise.complete.obs", method="spearman")
+cor.test(All.data$Diphyllobothriidea, All.data$count_Spirometra,
+         use="pairwise.complete.obs", method="spearman")
 
-cor(All.data$Spirometra, All.data$count_Spirometra,
-    use="pairwise.complete.obs", method="spearman")
+cor.test(All.data$Spirometra, All.data$count_Spirometra,
+         use="pairwise.complete.obs", method="spearman")
 
-cor(All.data$Diphyllobothrium, All.data$count_Spirometra,
-    use="pairwise.complete.obs", method="spearman")
+cor.test(All.data$Diphyllobothrium, All.data$count_Spirometra,
+         use="pairwise.complete.obs", method="spearman")
+
+cor.test(All.data$Diphyllobothrium, All.data$count_Spirometra,
+         use="pairwise.complete.obs", method="spearman")
+
 
 
 pdf("figures/figures_Hyena/Figure2b_Spirometra.pdf")
@@ -354,15 +358,15 @@ range(All.data[All.data$count_Spirometra==0 & All.data$Diphyllobothriidea>0,
 
 
 ## Cystoisospora misidentified as Eimeria
-cor(All.data$Cystoisospora, All.data$count_Cystoisospora,
-    use="pairwise.complete.obs", method="spearman")
+cor.test(All.data$Cystoisospora, All.data$count_Cystoisospora,
+         use="pairwise.complete.obs", method="spearman")
 
-cor(All.data$Eimeria, All.data$count_Cystoisospora,
-    use="pairwise.complete.obs", method="spearman")
+cor.test(All.data$Eimeria, All.data$count_Cystoisospora,
+         use="pairwise.complete.obs", method="spearman")
 
 ## The two "Eimerias" help a little
-cor((All.data$Eimeria+ All.data$Eimeria.1), All.data$count_Cystoisospora,
-    use="pairwise.complete.obs", method="spearman")
+cor.test((All.data$Eimeria+ All.data$Eimeria.1), All.data$count_Cystoisospora,
+         use="pairwise.complete.obs", method="spearman")
 
 ## Best combinations for "_small"
 cor((All.data$Eimeria +
@@ -418,26 +422,6 @@ ggplot(All.data, aes(Eimeria.1+1, count_Cystoisospora2+1,
     ggtitle("Coccidia (large oocyst types)") +
     theme_bw()
 dev.off()
-
-library(Biostrings)
-Cocci.PS <- subset_taxa(PS, Class %in% "Coccidia")
-Cocci_seq <- DNAStringSet(taxa_names(Cocci.PS))
-
-## overlook of taxonomic annotation
-cbind(table(tax_table(Cocci.PS)[, "Genus"]))
-
-names(Cocci_seq) <- make.names(tax_table(Cocci.PS)[, "Genus"],
-                               unique=TRUE)
-
-writeXStringSet(Cocci_seq, "out_data/Cocci_seq.fasta")
-
-Bes_seq <- DNAStringSet(taxa_names(subset_taxa(PS, Genus %in% "Besnoitia")))
-
-names(Bes_seq) <- paste0("Bes", 1:length(Bes_seq))
-
-writeXStringSet(Bes_seq, "out_data/Bes_seq.fasta")
-
-
 
 ################ Richness, diversity and evenness ######################
 load(file="/SAN/Metabarcoding/phlyoSeq_Hy_rare.Rdata") # -> PS.rare,
@@ -667,6 +651,69 @@ Chao.phyla.bak[c("Tenericutes", "Actinobacteria","Bacteroidetes", "Firmicutes")]
 ## Bacteria for Sex ... not reported as not able to disentangle from
 ## age
 
+### Testing individual taxa for correlation with diversity.
+
+## Eukaryotes
+EDiv <- PS.rare.est
+names(EDiv) <- paste0("Euk_", names(EDiv))
+
+All.data <- merge(All.data, EDiv, by.x= "ID.Hyena", by.y=0) 
+
+## Bacteria
+BDiv <- PS.r.gB.est
+names(BDiv) <- paste0("Bac_", names(BDiv))
+
+All.data <- merge(All.data, BDiv, by.x= "ID.Hyena", by.y=0) 
+
+
+div.col <- grep("Euk_|Bac_", colnames(All.data), value=TRUE)
+
+div.spear.cor <- data.frame(t(cor(All.data[, div.col], All.data[, c(tax.cols, count.col)],
+                                  method="spearman",
+                                  use="pairwise.complete.obs")))
+
+
+All.female <- All.data[All.data$sex%in%"Female", ]
+
+cor.test(All.female$count_Spirometra, All.female$Euk_Observed, method="spearman")
+
+cor.test(All.female$count_Spirometra, All.female$Bac_Observed, method="spearman")
+
+cor.test(All.female$Spirometra, All.female$Bac_Observed, method="spearman")
+
+cor.test(All.female$Diphyllobothriidae, All.female$Bac_Observed, method="spearman")
+
+
+cor.test(All.female$count_Ancylostoma, All.female$Euk_Observed, method="spearman")
+
+cor.test(All.female$count_Ancylostoma, All.female$Bac_Observed, method="spearman")
+
+cor.test(All.female$Ancylostoma, All.female$Euk_Observed, method="spearman")
+
+cor.test(All.female$Ancylostoma, All.female$Bac_Observed, method="spearman")
+
+cor.test(All.female$Rhabditida, All.female$Bac_Observed, method="spearman")
+
+cor.test(All.female$Spirometra, All.female$Bac_Observed, method="spearman")
+
+cor.test(All.female$Ancylostoma, All.female$Bac_Observed, method="spearman")
+
+cor.test(All.female$Rhabditida, All.female$Bac_Observed, method="spearman")
+
+
+## This is a result of Juveniles having lower Dipylidium and lower
+## Bacterial diversity:
+cor.test(All.female$Dipylidiidae, All.female$Bac_Observed, method="spearman")
+
+cor.test(All.female$Dipylidiidae, All.female$Euk_Observed, method="spearman")
+
+
+## This might be reason to worry???!!! 
+cor.test(All.female$Vertebrata, All.female$Euk_Observed, method="spearman")
+
+cor.test(All.female$Vertebrata, All.female$Bac_Observed, method="spearman")
+
+
 
 ################### ORDINATIONS ##################
 ## log transformaitons on sample counts 
@@ -726,10 +773,17 @@ ggplot() +
 dev.off()
 
 
+## get unnormalized data to do the DESeq stuff
+
+load(file="/SAN/Metabarcoding/phlyoSeq_Hy_raw.Rdata") ## -> PS.raw
+
+PS.raw.genus <- tax_glom(PS.raw, "Genus")
+
+
 ## differences by phyla
 library(DESeq2)
-Bac.diagdds <- phyloseq_to_deseq2(subset_taxa(PS.genus, Kingdom%in%"Bacteria"), ~ age)
-Bac.diagdds <- DESeq(Bac.diagdds, test="Wald", fitType="parametric")
+Bac.diagdds <- phyloseq_to_deseq2(subset_taxa(PS.raw.genus, Kingdom%in%"Bacteria"), ~ age)
+Bac.diagdds <- DESeq(Bac.diagdds, test="LRT", fitType="parametric", reduced= ~ 1)
 
 Bac.res <- results(Bac.diagdds, cooksCutoff = FALSE)
 alpha <- 0.05
@@ -818,15 +872,15 @@ dev.off()
 
 ## Eukaryote single genus differences
 PS.female.euk <- subset_samples(
-    subset_taxa(PS.genus, Kingdom%in%"Eukaryota"), age%in%"Adult")
+    subset_taxa(PS.raw.genus, Kingdom%in%"Eukaryota"))## , age%in%"Adult")
 
 Euk.diagdds <- phyloseq_to_deseq2(PS.female.euk, ~ rank)
-Euk.diagdds <- DESeq(Euk.diagdds, test="Wald", fitType="parametric")
+Euk.diagdds <- DESeq(Euk.diagdds, test="LRT", fitType="parametric", reduced= ~ 1)
 
 Euk.res <- results(Euk.diagdds, cooksCutoff = FALSE)
-alpha <- 0.05
+alpha <- 0.1
 Euk.sigtab <- Euk.res[which(Euk.res$padj < alpha), ]
-Euk.sigtab <- cbind(as(Euk.sigtab, "data.frame"), as(tax_table(PS.genus)[rownames(Euk.sigtab), ], "matrix"))
+Euk.sigtab <- cbind(as(Euk.sigtab, "data.frame"), as(tax_table(PS.raw.genus)[rownames(Euk.sigtab), ], "matrix"))
 rownames(Euk.sigtab) <- NULL
 Euk.sigtab
 

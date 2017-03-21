@@ -8,7 +8,7 @@ load(file="/SAN/Metabarcoding/taxa.Rdata") ## tax.l
 load(file="/SAN/Metabarcoding/trees.Rdata") ## tree.l
 
 ######### FROM HERE completely Hyena specific ###################
-Hyena.Cat <- read.csv("/home/ele/Dropbox/Hyena_Hartmann_MS/Animal_number_variable_codes_EH.csv")
+Hyena.Cat <- read.csv("/home/ele/Documents/Hyena_Hartmann_MS/Animal_number_variable_codes_EH.csv")
 Hyena.Cat <- as.data.frame(apply(Hyena.Cat, 2, function (x) gsub(" ", "", x)))
 
 Hyena.Cat$V1 <- ifelse(Hyena.Cat$V1==1, "Male", "Female")
@@ -85,25 +85,29 @@ sum.subject.df$Sample.ID <- NULL
 sum.subject.df$rep <- NULL
 rownames(sum.subject.df) <- sum.subject.df$Hyena.ID
 
-PS <- phyloseq(otu_table(SumRSVs, taxa_are_rows=FALSE),
-               sample_data(sum.subject.df),
-               tax_table(all.tax))
+PS.raw <- phyloseq(otu_table(SumRSVs, taxa_are_rows=FALSE),
+                   sample_data(sum.subject.df),
+                   tax_table(all.tax))
+
+save(PS.raw, file="/SAN/Metabarcoding/phlyoSeq_Hy_raw.Rdata")
 
 ## ################  rarify ############################
 set.seed(123)
 
-min_lib <- min(sample_sums(PS))
-nsamp <- nsamples(PS)
+min_lib <- min(sample_sums(PS.raw))
+nsamp <- nsamples(PS.raw)
 
-PS.rare <- rarefy_even_depth(PS, sample.size = min_lib, verbose = FALSE, replace = TRUE)
+PS.rare <- rarefy_even_depth(PS.raw, sample.size = min_lib, verbose = FALSE, replace = TRUE)
 
 save(PS.rare, file="/SAN/Metabarcoding/phlyoSeq_Hy_rare.Rdata")
 
 ## ##############  normalize #####################
-MED <- median(rowSums(otu_table(PS)))
-FAC <- MED/rowSums(otu_table(PS))
+PS <- PS.raw
 
-otu_table(PS) <- round(otu_table(PS)*FAC)
+MED <- median(rowSums(otu_table(PS.raw)))
+FAC <- MED/rowSums(otu_table(PS.raw))
+
+otu_table(PS) <- round(otu_table(PS.raw)*FAC)
 
 save(PS, file="/SAN/Metabarcoding/phlyoSeq_Hy.Rdata")
 
