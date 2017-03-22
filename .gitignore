@@ -1,7 +1,3 @@
-/.Rhistory
-/R/.Rhistory
-/R/*.R~
-/figures/*.*
-/figures_old/*
+*~
+*~
 figures
-out_data
