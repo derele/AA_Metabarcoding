@@ -938,6 +938,23 @@ ggplot() +
     theme_bw()
 dev.off()
 
+pdf("/home/ele/Figure4c_labeled.pdf", width=18, height=4)
+ggplot() +
+    geom_jitter(data = pls_biplot_Euk$loadings,
+                aes(y="1", x = 25 * Comp.1 , col = Phylum), size = 2) +
+    geom_label(data = pls_biplot_Euk$scores,
+               aes(y="1",x = Comp.1, label=Hyena.ID), size=2, position="jitter") +
+    scale_color_brewer(palette = "Set1") +
+    labs(y = "Random scatter", col = "Phylum", x = "") +
+    scale_shape_discrete(solid=FALSE) +
+    guides(col = guide_legend(override.aes = list(size = 3))) +
+    ##    theme(panel.border = element_rect(color = "#787878", fill = alpha("white", 0)))
+    theme_bw()
+dev.off()
+
+write.csv(data[order(data$Comp.1), ], "/home/ele/PLS_differences_Figure4c.csv",
+          row.names = FALSE)
+
 
 pls.ordered <- pls_biplot_Euk$loadings[order(pls_biplot_Euk$loadings$Comp.1), ]
 
