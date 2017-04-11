@@ -81,38 +81,6 @@ sum(otu_table(subset_taxa(PS.genus, Kingdom %in% "Bacteria")))
 sum(otu_table(subset_taxa(PS, Kingdom %in% "Eukaryota")))
 sum(otu_table(subset_taxa(PS.genus, Kingdom %in% "Eukaryota")))
 
-## ## Abundance vs. Intensity
-## Genus.Abu <- unname(colSums(otu_table(PS.genus)))
-## Genus.Prev <- unname(apply(otu_table(PS.genus), 2,
-##                            function (x) sum(x>0)))
-
-## Prev.Abu.Genus <- data.frame(cbind(
-##     Abu=Genus.Abu,
-##     Prev=Genus.Prev,
-##     tax_table(PS.genus)))
-
-## unicellular_phy<- c("Apicomplexa",  "Dinoflagellata", "Microsporidia")
-
-## multicellular_phy <- c("Arthropoda",  "Chordata",
-##                        "Platyhelminthes",  "Vertebrata")
-
-## Prev.Abu.Genus <- Prev.Abu.Genus[Prev.Abu.Genus$Phylum%in%c(unicellular_phy,
-##                                                             multicellular_phy), ]# |
-## ##                                 Prev.Abu.Genus$Kingdom%in%"Bacteria", ]
-                                                            
-## Prev.Abu.Genus$Prev <- as.numeric(as.character(Prev.Abu.Genus$Prev))
-## Prev.Abu.Genus$Abu <- as.numeric(as.character(Prev.Abu.Genus$Abu))
-
-## ggplot(Prev.Abu.Genus, aes(Abu, Prev, color=Phylum)) +
-##     geom_point() +
-## ##     scale_y_log10() +
-##     scale_x_log10() +
-##     geom_smooth(method="lm", se=FALSE)
-
-
-## RSV.abu <- unname(colSums(otu_table(PS)))
-
-
 ## What phyla are detected
 table(tax_table(PS)[, "Phylum"])
 
@@ -172,10 +140,8 @@ RSVcounts[RSVcounts$Phylum%in%euk_phyla& !RSVcounts$Phylum%in%spurious.phyla ,]
 sum(RSVcounts[RSVcounts$Phylum%in%bak_phyla,"numRSVs"])
 sum(RSVcounts[RSVcounts$Phylum%in%euk_phyla,"numRSVs"])
 
-
 sum(otu_table(subset_taxa(PS, Kingdom %in% "Bacteria")))-
 sum(otu_table(subset_taxa(PS.genus, Kingdom %in% "Bacteria")))
-
 
 sum(otu_table(subset_taxa(PS, Kingdom %in% "Eukaryota")))-
 sum(otu_table(subset_taxa(PS.genus, Kingdom %in% "Eukaryota")))
