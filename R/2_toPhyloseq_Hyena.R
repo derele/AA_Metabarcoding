@@ -5,7 +5,7 @@ load(file="/SAN/Metabarcoding/exclude.Rdata") ## -> Samples.to.exclude
 ## control 
 load(file="/SAN/Metabarcoding/table.Rdata") ## -> STnoC
 load(file="/SAN/Metabarcoding/taxa.Rdata") ## tax.l
-load(file="/SAN/Metabarcoding/trees.Rdata") ## tree.l
+## load(file="/SAN/Metabarcoding/trees.Rdata") ## tree.l
 
 ######### FROM HERE completely Hyena specific ###################
 Hyena.Cat <- read.csv("/home/ele/Documents/Hyena_Hartmann_MS/Animal_number_variable_codes_EH.csv")
@@ -20,10 +20,17 @@ Hyena.Cat <- Hyena.Cat[!is.na(Hyena.Cat$V3), ]
 names(Hyena.Cat) <- c("animal", "Hyena.ID", "sex", "age", "rank", "pack")
 Hyena.Cat$ID <- Hyena.Cat$animal <- NULL
 
+Hyena.lac <- read.csv("/home/ele/Documents/Hyena_Hartmann_MS/Lactation_status_fixed.csv")
+names(Hyena.lac)[names(Hyena.lac)%in%"V5"] <- "lactation"
+
+Hyena.lac$lactation <- as.character(
+    factor(Hyena.lac$lactation, levels=c("lact", "not")))
+
+Hyena.Cat <- merge(Hyena.Cat, Hyena.lac[,c("ID.Hyena", "lactation")],
+                   by.x="Hyena.ID", by.y="ID.Hyena")
+
 Exp.Cat <- read.table("/SAN/Metabarcoding/AA_combi/sample_table.csv", header=FALSE)
 names(Exp.Cat) <- c("Hyena.ID", "Sample.ID")
-
-## might be needed to add this to samples to exclude... "I436"
 
 subject.df <- merge(Exp.Cat, Hyena.Cat, by="Hyena.ID")
 subject.df <- subject.df[!subject.df$Sample.ID%in%Samples.to.exclude, ]
