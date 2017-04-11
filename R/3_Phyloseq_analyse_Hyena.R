@@ -170,7 +170,7 @@ dev.off()
 
 showP <- cbind(as.character(unique(sort(tax.frame$Phylum[tax.frame$Kingdom%in%"Eukaryota"]))))
 
-write.csv(showP, "Euk_phyla.csv", row.names=FALSE, quote=FALSE)
+## write.csv(showP, "Euk_phyla.csv", row.names=FALSE, quote=FALSE)
 
 library(xtable)
 
@@ -453,6 +453,31 @@ test.Chao.age <- function(ps){
                         med.Adult=med.eve["Adult"], med.Cub=med.eve["Cub"]))
 }
 
+
+test.Chao.lactation <- function(ps){
+    mes <- c("Observed", "Chao1", "Shannon")
+    est <- estimate_richness(ps, measures=mes)
+    df <- merge(sample_data(ps), est, by=0)
+    df$pilou <- df$Shannon/log(df$Observed)
+
+    test.ric <- wilcox.exact(Observed ~ lactation, data = df, exact = TRUE)
+    test.dif <- wilcox.exact(Chao1 ~ lactation, data = df, exact = TRUE)
+    test.eve <- wilcox.exact(pilou ~ lactation, data = df, exact = TRUE)
+
+    test.ric <- wilcox.exact(Observed ~ lactation, data = df, exact = TRUE)
+    med.ric <- tapply(df$Observed, df$lactation, median)
+    test.dif <- wilcox.exact(Chao1 ~ lactation, data = df, exact = TRUE)
+    med.div <- tapply(df$Chao1, df$lactation, median)
+    test.eve <- wilcox.exact(pilou ~ lactation, data = df, exact = TRUE)
+    med.eve <- tapply(df$pilou, df$lactation, median)
+    list(Obs.ric = list(W=test.ric$statistic, p.value=test.ric$p.value,
+                        med.Adult=med.ric["lact"], med.Cub=med.ric["not"]),
+         Cha.div = list(W=test.dif$statistic, p.value=test.dif$p.value,
+                        med.Adult=med.div["lact"], med.Cub=med.div["not"]),
+         Pil.eve = list(W=test.eve$statistic, p.value=test.eve$p.value,
+                        med.Adult=med.eve["lact"], med.Cub=med.eve["not"]))
+}
+
 do.call(rbind, test.Chao.rank(PS.rare))
 do.call(rbind, test.Chao.rank(PS.r.genus))
 
@@ -466,9 +491,7 @@ PS.r.g.E <- subset_taxa(PS.r.genus,
 
 
 do.call(rbind, test.Chao.rank(PS.rare.E))
-
 do.call(rbind, test.Chao.rank(PS.r.g.E))
-
 
 
 PS.rare.est <- estimate_richness(PS.rare.E, measures=c("Observed", "Chao1", "Shannon"))
@@ -515,6 +538,8 @@ ggplot(PS.r.g.mdf, aes(rank, value)) +
     facet_wrap(~variable, nrow = 1, scales="free_y")+
     ggtitle("Richness, diversity and evenness for rarified genus counts")
 dev.off()
+
+## NS result for bacteria
 
 do.call(rbind, test.Chao.rank(
                    subset_taxa(PS.rare,
@@ -713,6 +738,19 @@ cor.test(All.female$Vertebrata, All.female$Euk_Observed, method="spearman")
 cor.test(All.female$Vertebrata, All.female$Bac_Observed, method="spearman")
 
 
+## Lactation!!!
+
+PS.female.euk <- subset_samples(
+    subset_taxa(PS.r.genus, Kingdom%in%"Eukaryota"),
+    age%in%"Adult" & sex%in%"Female")
+
+do.call(rbind, test.Chao.lactation(PS.female.euk))
+
+PS.female.bac <- subset_samples(
+    subset_taxa(PS.r.genus, Kingdom%in%"Bacteria"),
+    age%in%"Adult" & sex%in%"Female")
+
+do.call(rbind, test.Chao.lactation(PS.female.bac))
 
 ################### ORDINATIONS ##################
 ## log transformaitons on sample counts 
@@ -951,13 +989,16 @@ fisher.test(pls.ordered$Genus %in%
 
 ## Eukaryote single genus differences
 PS.female.euk <- subset_samples(
-    subset_taxa(PS.raw.genus, Kingdom%in%"Eukaryota"))## , age%in%"Adult")
+    subset_taxa(PS.raw.genus, Kingdom%in%"Eukaryota") , age%in%"Adult")
 
 Euk.diagdds <- phyloseq_to_deseq2(PS.female.euk, ~ rank)
 Euk.diagdds <- DESeq(Euk.diagdds, test="LRT", fitType="parametric", reduced= ~ 1)
 
 Euk.res <- results(Euk.diagdds, cooksCutoff = FALSE)
-alpha <- 0.1
+
+### EVERYTHING NS 
+alpha <- 0.7
+
 Euk.sigtab <- Euk.res[which(Euk.res$padj < alpha), ]
 Euk.sigtab <- cbind(as(Euk.sigtab, "data.frame"), as(tax_table(PS.raw.genus)[rownames(Euk.sigtab), ], "matrix"))
 rownames(Euk.sigtab) <- NULL
@@ -974,7 +1015,32 @@ pdf("figures/figures_Hyena/Figure4d_single_diff.pdf")
 plot.euk.diff
 dev.off()
 
+## This difference means MORE Ancylostome in HIGH ranking!!!!
 
-NSplsFitEuk.age <- train(age ~ ., data = dataMatrixEuk,
-                         method = "pls", preProc= "center",
-                         trControl = trainControl(method = "LOOCV"))
+
+### Lactation
+Euk.diagdds <- phyloseq_to_deseq2(PS.female.euk, ~ lactation)
+Euk.diagdds <- DESeq(Euk.diagdds, test="LRT", fitType="parametric", reduced= ~ 1)
+
+Euk.res <- results(Euk.diagdds, cooksCutoff = FALSE)
+
+### EVERYTHING NS 
+alpha <- 0.7
+
+Euk.sigtab <- Euk.res[which(Euk.res$padj < alpha), ]
+Euk.sigtab <- cbind(as(Euk.sigtab, "data.frame"), as(tax_table(PS.raw.genus)[rownames(Euk.sigtab), ], "matrix"))
+rownames(Euk.sigtab) <- NULL
+Euk.sigtab
+
+plot.euk.diff <- get.sigtab.plot(Euk.sigtab)
+
+devSVG("figures/figures_Hyena/Figure4d_single_diff.svg")
+plot.euk.diff
+dev.off()
+
+
+pdf("figures/figures_Hyena/Figure4d_single_diff.pdf")
+plot.euk.diff
+dev.off()
+
+## This difference means MORE Ancylostome in HIGH ranking!!!!
