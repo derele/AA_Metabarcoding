@@ -15,6 +15,7 @@ Hyena.Cat$V1 <- ifelse(Hyena.Cat$V1==1, "Male", "Female")
 Hyena.Cat$V2 <- ifelse(Hyena.Cat$V2==2, "Cub", "Adult")
 Hyena.Cat$V3 <- ifelse(Hyena.Cat$V3==1, "high", "low")
 ## Hyena.Cat$V3[is.na(Hyena.Cat$V3)] <- "low" ## watchout not TRUE!!!
+## rather exclude  I547   Male Adult <NA> 
 Hyena.Cat <- Hyena.Cat[!is.na(Hyena.Cat$V3), ]
 
 names(Hyena.Cat) <- c("animal", "Hyena.ID", "sex", "age", "rank", "pack")
@@ -107,6 +108,26 @@ nsamp <- nsamples(PS.raw)
 PS.rare <- rarefy_even_depth(PS.raw, sample.size = min_lib, verbose = FALSE, replace = TRUE)
 
 save(PS.rare, file="/SAN/Metabarcoding/phlyoSeq_Hy_rare.Rdata")
+
+## rarify w/o Eukaryotes
+
+
+## ################  rarify ############################
+set.seed(123)
+
+PS.sub.raw <- subset_taxa(PS.raw,
+                          !Phylum %in% c("Chordata", "Vertebrata"))
+
+min_lib <- min(sample_sums(PS.sub.raw))
+nsamp <- nsamples(PS.sub.raw)
+
+PS.sub.rare <- rarefy_even_depth(PS.sub.raw,
+                                 sample.size = min_lib,
+                                 verbose = FALSE, replace = TRUE)
+
+save(PS.sub.rare, file="/SAN/Metabarcoding/phlyoSeq_Hy_sub_rare.Rdata")
+
+
 
 ## ##############  normalize #####################
 PS <- PS.raw

@@ -408,6 +408,10 @@ dev.off()
 load(file="/SAN/Metabarcoding/phlyoSeq_Hy_rare.Rdata") # -> PS.rare,
 PS.r.genus <- tax_glom(PS.rare, "Genus", NArm = TRUE)
 
+load(file="/SAN/Metabarcoding/phlyoSeq_Hy_sub_rare.Rdata") # -> PS.sub.rare
+
+PS.sub.r.genus <- tax_glom(PS.sub.rare, "Genus", NArm = TRUE)
+
 test.Chao.rank <- function(ps){
     mes <- c("Observed", "Chao1", "Shannon")
     est <- estimate_richness(ps, measures=mes)
@@ -481,6 +485,8 @@ test.Chao.lactation <- function(ps){
 do.call(rbind, test.Chao.rank(PS.rare))
 do.call(rbind, test.Chao.rank(PS.r.genus))
 
+
+## # The astonishing MAIN RESULTS
 PS.rare.E <- subset_taxa(PS.rare,
                          !Phylum %in% c(clear.prey.phyla, undef) &
                          Kingdom %in% "Eukaryota")
@@ -492,6 +498,21 @@ PS.r.g.E <- subset_taxa(PS.r.genus,
 
 do.call(rbind, test.Chao.rank(PS.rare.E))
 do.call(rbind, test.Chao.rank(PS.r.g.E))
+
+
+## # Is it only because low rankning intested more (regularly) prey
+PS.sub.rare.E <- subset_taxa(PS.sub.rare,
+                             !Phylum %in% c(clear.prey.phyla, undef) &
+                             Kingdom %in% "Eukaryota")
+
+PS.s.r.g.E <- subset_taxa(PS.sub.r.genus,
+                          !Phylum %in% c(clear.prey.phyla, undef) &
+                          Kingdom %in% "Eukaryota")
+
+do.call(rbind, test.Chao.rank(PS.sub.rare.E))
+do.call(rbind, test.Chao.rank(PS.s.r.g.E))
+
+### Phew this does remain Significnat
 
 
 PS.rare.est <- estimate_richness(PS.rare.E, measures=c("Observed", "Chao1", "Shannon"))
