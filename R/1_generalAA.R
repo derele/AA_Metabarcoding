@@ -115,10 +115,19 @@ plot.exclude.clusters <- function(OTUs, k=2) {
 }
 
 pdf("figures/dada_sample_exclusion_test.pdf", width=24, height=12)
-cluster.table <- plot.exclude.clusters(Dmap, 2)
+cluster.table.sample <- plot.exclude.clusters(Dmap, 2)
 dev.off()
 
-Samples.to.exclude <- names(cluster.table[cluster.table==2])
+Samples.to.exclude <- names(cluster.table.sample[cluster.table.sample==2])
+
+
+pdf("figures/dada_primer_exclusion_test.pdf", width=24, height=12)
+cluster.table.primer <- plot.exclude.clusters(t(Dmap), 2)
+dev.off()
+
+Primers.to.exclude <- names(cluster.table.primer[cluster.table.primer==2])
+
+
 
 ########## Remove failed samples ###########################    
 tSTnoC <- lapply(STnoC, function(x) as.data.frame(t(x)))

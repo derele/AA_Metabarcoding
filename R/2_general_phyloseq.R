@@ -1,20 +1,33 @@
 library(phyloseq)
 library(reshape)
+library(ggplot2)
+library(parallel)
 
 load(file="/SAN/Metabarcoding/table.Rdata") ## -> STnoC
 load(file="/SAN/Metabarcoding/taxa.Rdata") ## tax.l
+load(file="/SAN/Metabarcoding/trees.Rdata") ## tree.l
+
+sample.labels <- read.csv("/SAN/Metabarcoding/AA_combi/sample_table.csv", sep=" ",
+                          header=FALSE)
+rownames(sample.labels) <- sample.labels$V2
+
+sample.labels$species <- ifelse(grepl("^W", sample.labels$V1), "Wolf",
+                         ifelse(grepl("^K|^NK", sample.labels$V1), "Control",
+                                "Hyena"))
 
 ps.l <- lapply(seq_along(STnoC), function (i) {
     ps <- phyloseq(otu_table(STnoC[[i]], taxa_are_rows=FALSE),
-                   ## phy_tree(tree.l[[i]]$tree),
-                   tax_table(tax.l[[i]]))
+                   phy_tree(tree.l[[i]]$tree),
+                   tax_table(tax.l[[i]]),
+                   sample_data(sample.labels))
     return(ps)
 })
 
 names(ps.l) <- names(STnoC)
 
-ps.l <- ps.l[!grepl("Klin|ADM", names(ps.l))]
 
+## Focus on the Eukaryotes only
+ps.l <- ps.l[!grepl("Klin|ADM", names(ps.l))]
 
 num.taxa <-sapply(c("Genus", "Family", "Order", "Class", "Phylum"), function (rank){
     lapply(ps.l, function (x) 
@@ -28,31 +41,16 @@ PrimTax <- as.data.frame(cbind(num.taxa, num.reads))
 
 PrimTax <- as.data.frame(apply(PrimTax, 2, unlist))
 
-ggplot(PrimTax, aes(Genus, num.reads)) +
-    geom_point() #+
-##    scale_y_log10()
-
-ggplot(PrimTax, aes(Order, num.reads)) +
-    geom_point() +
-    scale_y_log10()
-
-ggplot(PrimTax, aes(Phylum, num.reads)) +
-    geom_point()
-
-
 unique.taxa.cumsum <- function(ps.list, rank){
     taxonNa <- lapply(ps.list, function (x) 
         get_taxa_unique(x, taxonomic.rank = rank))
     names(taxonNa) <- names(ps.list)
-    ## taxonNa <- taxonNa[order(unlist(lapply(taxonNa, length)),
-    ##                         decreasing=TRUE)]
     unique.taxonNa.cumsum <- sapply(0:length(taxonNa),
                                     function (i) length(unique(unlist(taxonNa[0:i]))))
     return(unique.taxonNa.cumsum)
 }
 
 ps.numord.l <- ps.l[order(PrimTax$num.reads, decreasing=TRUE)]
-
 
 cum.tax <- sapply(c("Genus", "Family", "Class", "Order", "Phylum"), function (rank){
     unique.taxa.cumsum(ps.numord.l, rank)
@@ -102,25 +100,26 @@ at28[!at28%in%before28]
 
 
 ### putting it all together (throwing away the primer data)
-all.samples <- unique(unlist(lapply(STnoC, rownames)))
+all.reps <- unique(unlist(lapply(STnoC, rownames)))
 
 STnoC.filled <- lapply(STnoC, function (foo){
-    missing.samples <- all.samples[!all.samples%in%rownames(foo)]
+    missing.samples <- all.reps[!all.reps%in%rownames(foo)]
     if(length(missing.samples)>0){
         bar <- matrix(0, nrow=length(missing.samples), ncol=ncol(foo))
         rownames(bar) <- missing.samples
         foobar <- rbind(foo, bar)
     } else {foobar <- foo}
-    foobar[all.samples, ]
+    foobar[all.reps, ]
 })
 
-
+## excluding again the non-eukaryote primes
 all.tax.counts <- Reduce(cbind,
                          STnoC.filled[!grepl("Klin|ADM", names(STnoC.filled))])
 all.tax <- Reduce(rbind, tax.l[!grepl("Klin|ADM", names(STnoC.filled))])
 
 PSA <- phyloseq(otu_table(all.tax.counts, taxa_are_rows=FALSE),
-                tax_table(all.tax))
+                tax_table(all.tax),
+                sample_data(sample.labels))
 
 ## Just to find out what phyla of low throughput primers are 
 ordered.throughput <- num.reads[order(num.reads, decreasing=TRUE)]
@@ -142,18 +141,9 @@ rare.at.seq <- sapply(cum.throu, function (x) {
     verbose = FALSE, replace = TRUE)
 })
 
-
-cum.tax$rare.Genus <- c(0, length(unique(get_taxa_unique(PSA.rare, "Genus"))))
-
 rare.tax <- sapply(c("Genus", "Family", "Class", "Order", "Phylum"), function (rank){
-    sapply(rare.at.seq, function (x) {
-        length(unique(get_taxa_unique(x, rank)))
-    })
+        unique.taxa.cumsum(rare.at.seq, rank)
 })
-
-rare.tax <- rbind(c(0, 0, 0, 0, 0), rare.tax)
-
-rownames(rare.tax) <- NULL
 
 colnames(rare.tax) <- paste0("rare.", colnames(rare.tax))
 
@@ -174,3 +164,61 @@ Eval.plot <- cum.plot +
 pdf("figures/Eval_Taxa.pdf")
 Eval.plot
 dev.off()
+
+
+################ Exclude samples and amplicons ########
+
+add.control <-
+    as.character(sample_data(PSA)$V2)[
+        sample_data(PSA)$species%in%"Control"]
+
+### Samples
+ps.l.clean <- lapply(ps.l, subset_samples, !V2%in%c(Samples.to.exclude,
+                                                    add.control))
+### Amplicons
+ps.l.clean <- ps.l.clean[!names(ps.l.clean)%in%Primers.to.exclude]
+
+## both to genus collapsed
+ps.l.genus <- mclapply(ps.l.clean, function (x) {
+    tax_glom(x, "Genus", NArm = TRUE)},
+    mc.cores=20)
+
+## exclude amplicons
+all.tax.counts.clean <-
+    Reduce(cbind,
+           STnoC.filled[!grepl("Klin|ADM", names(STnoC.filled)) &
+                        !names(STnoC.filled)%in%Primers.to.exclude])
+
+all.tax.clean <-
+    Reduce(rbind, tax.l[!grepl("Klin|ADM", names(STnoC.filled)) &
+                        !names(STnoC.filled)%in%Primers.to.exclude])
+
+PSA.clean <- phyloseq(otu_table(all.tax.counts.clean, taxa_are_rows=FALSE),
+                      tax_table(all.tax.clean),
+                      sample_data(sample.labels))
+
+PSA.clean <- subset_samples(PSA.clean, !V2%in%c(Samples.to.exclude,
+                                                add.control))
+
+#### Evaluation of sample statistics
+cor.between.reps <- function (PS){ 
+    sdat <- sample_data(PS)
+    slist <- by(sdat, sdat$V1, function (x) as.character(x$V2))
+    slist <- slist[unlist(lapply(slist, length))==2]
+    all.table <- t(otu_table(PS))
+    sort.tab <- cbind(c(all.table[, unlist(lapply( slist, "[[", 1))]),
+                      c(all.table[, unlist(lapply( slist, "[[", 2))]))
+    min(cor(log(sort.tab+1), method="pearson"))
+}
+
+full.cor <- cor.between.reps(PSA.clean)
+full.cor.genus <- cor.between.reps(PSA.genus)
+
+full.cor.l <- mclapply(ps.l.clean, cor.between.reps, mc.cores=20)
+
+full.cor.genus.l <- mclapply(ps.l.genus, cor.between.reps, mc.cores=20)
+
+FC <- melt(list(full.cor.l))
+
+FC.genus <- melt(list(full.cor.genus.l))
+
