@@ -86,6 +86,9 @@ MA6 <- MultiAmplicon:::noChimeMulti(MA5, mc.cores=20)
 names(MA6@sequenceTableNoChime) <- rownames(MA6)
 STnoC <- MA6@sequenceTableNoChime
 
+all.dada.seq <- DNAStringSet(unlist(lapply(STnoC, colnames)))
+
+## writeFasta(all.dada.seq, "/SAN/Metabarcoding/AA_combi/all_dada.fasta")
 
 ## the level percent of non-Bimera sequences
 lapply(seq_along(MA6@sequenceTable), function (i){
@@ -153,6 +156,8 @@ align.seqtab <- function (seqtab){
 
 alignments <- mclapply(STnoC, align.seqtab, mc.cores=20)
 
+
+
 get.tree.from.alignment <- function (alignment){
     phang.align <- phyDat(as(alignment, "matrix"), type="DNA")
     dm <- dist.ml(phang.align)
@@ -193,5 +198,6 @@ lapply(tax.l, function (x) {
 ## save(Samples.to.exclude, file="/SAN/Metabarcoding/exclude.Rdata")
 ## save(STnoC, file="/SAN/Metabarcoding/table.Rdata")
 ## save(tax.l, file="/SAN/Metabarcoding/taxa.Rdata")
+save(alignments, file="/SAN/Metabarcoding/align.Rdata")
 ## save(tree.l, file="/SAN/Metabarcoding/trees.Rdata")
 
