@@ -117,3 +117,15 @@ pdf("figures/bray_rank_MDS_combi.pdf", width=8, height=8)
 print(ord.plot.rank)
 dev.off()
 
+
+########## Some diversity estimates ## not very useful
+rich.plot <- lapply(ps.l.clean, function (ps){
+     plot_richness(ps, x="species", measures=c("Observed", "Chao1"))
+})
+
+pdf("figures/richness_all.pdf", width=46, height=46)
+do.call(grid.arrange, rich.plot)
+dev.off()
+
+
+
