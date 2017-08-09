@@ -119,7 +119,11 @@ FAS.taxed <- DNAStringSet(FAS.taxed)
 ## Biostrings::writeXStringSet(FAS.taxed, "/SAN/db/RDP/Silva_123/SILVA_123_dada2.fasta", format="fasta")
 
 
-FUZZ.tax <- read.csv("/SAN/Metabarcoding/Hyena/second/dada.taxtable",
+## now need to run blast and the blast2alltax scirpt
+
+
+
+FUZZ.tax <- read.csv("/SAN/Metabarcoding/AA_combi/all_dada_vs_nt.taxtable",
                      as.is=TRUE)
 ## first see that we have them more then once
 FUZZ.tax <- FUZZ.tax[duplicated(FUZZ.tax$subject), ]
@@ -128,17 +132,19 @@ FUZZ.tax <- FUZZ.tax[!duplicated(FUZZ.tax$subject), ]
 ## then exclude undef at genus level
 FUZZ.tax <- FUZZ.tax[!grepl("undef", FUZZ.tax$genus), ]
 
-## write.table(FUZZ.tax$subject,
-##            "/SAN/Metabarcoding/Hyena/second/selected_dada_nr_hits.acc",
-##            row.names=FALSE, col.names=FALSE, quote=FALSE)
+write.table(FUZZ.tax$subject,
+            "/SAN/Metabarcoding/AA_combi/selected_dada_nr_hits.acc",
+            row.names=FALSE, col.names=FALSE, quote=FALSE)
 
-## now run blastcmd to get the fasta file blastdbcmd -db
-## /SAN/db/blastdb/nt/nt -entry_batch selected_dada_nr_hits.acc
-## -outfmt '%a%s' > dada_nr_hits.fasta
-## little bit of formatting magic
+## now run blastcmd to get the fasta file
+
+## blastdbcmd -db /SAN/db/blastdb/nt/nt -entry_batch selected_dada_nr_hits.acc -outfmt '%a|%s' > dada_nr_hits.fasta
+
+## plus a little bit of formatting magic
 ## tr '|' '\n' < dada_nr_hits.fasta > tmp; mv tmp dada_nr_hits.fasta
+## awk '{if(NR%2){print ">"$0} else {print}}' dada_nr_hits.fasta > tmp; mv tmp dada_nr_hits.fasta
 
-FUZZ <- Biostrings::readDNAStringSet("/SAN/Metabarcoding/Hyena/second/dada_nr_hits.fasta")
+FUZZ <- Biostrings::readDNAStringSet("/SAN/Metabarcoding/AA_combi/dada_nr_hits.fasta")
 
 names(FUZZ) <- gsub("\\.\\d+$", "", names(FUZZ))
 
@@ -154,8 +160,19 @@ names(FUZZ) <- newname
 
 ## now get rid of whole genomes and other really long sequences for
 ## efficiency of RDP
-FUZZ <- FUZZ[(width(FUZZ)<5000)]
+FUZZ <- FUZZ[(width(FUZZ)<5000 & width(FUZZ)>1400)]
+
+## properly named
+FUZZ <- FUZZ[(nchar(names(FUZZ))>10)]
+FUZZ <- FUZZ[!grepl("character\\(0\\)", names(FUZZ))]
 
 allFUZZ <- DNAStringSet(c(FAS.taxed, FUZZ))
 
-Biostrings::writeXStringSet(allFUZZ, "/SAN/db/RDP/Silva_123/SILVA_123_dada2_exp.fasta", format="fasta")
+## Biostrings::writeXStringSet(FUZZ,
+##                            "/SAN/Metabarcoding/AA_combi/dada2_WHexp.fasta",
+##                            format="fasta")
+
+
+## Biostrings::writeXStringSet(allFUZZ,
+##                             "/SAN/db/RDP/Silva_123/SILVA_123_dada2_WHexp.fasta",
+##                             format="fasta")
