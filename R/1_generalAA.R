@@ -5,16 +5,19 @@ library(MultiAmplicon)
 library(phyloseq)
 library(dada2)
 library(pheatmap)
-## library(ggplot2)
 library(reshape)
 library(DECIPHER)
 library(parallel)
 library(phangorn)
-## library(plyr)
 library(dplyr)
-## library(gridExtra)
-## library(nlme)
-## library(structSSI)
+
+## outputs are stored saved into files, if they should be re-computed
+## change hese values to TRUE
+FILTER <- FALSE
+newMA <- FALSE
+newAlign <- FALSE
+newTree <- FALSE
+newTax <- FALSE
 
 a.files <- list.files(path="/SAN/Metabarcoding/AA_combi/all_fastq_raw",
                       pattern=".fastq.gz", full.names=TRUE)
@@ -35,13 +38,15 @@ names(filtFs) <- samples
 filtRs <- file.path(filt_path, paste0(samples, "_R_filt.fastq.gz"))
 names(filtRs) <- samples
 
-## ## Filter # only run when new filtered data is needed
-## for(i in seq_along(Ffq.file)) {
-##     fastqPairedFilter(c(Ffq.file[i], Rfq.file[i]), c(filtFs[i], filtRs[i]),
-##                       truncLen=c(170,170), 
-##                       maxN=0, maxEE=2, truncQ=2, 
-##                       compress=TRUE, verbose=TRUE)
-## }
+if (FILTER){
+    ## Filter # only run when new filtered data is needed
+    for(i in seq_along(Ffq.file)) {
+        fastqPairedFilter(c(Ffq.file[i], Rfq.file[i]), c(filtFs[i], filtRs[i]),
+                          truncLen=c(170,170), 
+                          maxN=0, maxEE=2, truncQ=2, 
+                          compress=TRUE, verbose=TRUE)
+    }
+}
 
 ## obtain the primer data
 file.ptable <- "/SAN/Metabarcoding/AA_combi/sort_amplicons_input.csv"
@@ -60,40 +65,31 @@ files <- PairedReadFileSet(filtFs, filtRs)
 
 primers <- PrimerPairsSet(primerF, primerR)
 
-MA <- MultiAmplicon(primers, files)
+if (newMA){
+    MA <- MultiAmplicon(primers, files)
+    MA1 <- sortAmplicons(MA)    
+    MA2 <- derepMulti(MA1)
+    MA3 <- dadaMulti(MA2, err=NULL, selfConsist=TRUE,
+                     multithread=TRUE)
+    MA4 <- MultiAmplicon:::mergeMulti(MA3, justConcatenate=TRUE)
+    MA5 <- MultiAmplicon:::sequenceTableMulti(MA4)
+    MA6 <- MultiAmplicon:::noChimeMulti(MA5, mc.cores=20)
+    
+    pdf("figures/primers_MA_sorted.pdf", 
+        width=25, height=15, onefile=FALSE)
+    cluster <- plot_Amplicon_numbers(rawCounts(MA1))
+    dev.off()
 
-MA1 <- sortAmplicons(MA)
-
-pdf("figures/primers_MA_sorted.pdf", 
-    width=25, height=15, onefile=FALSE)
-cluster <- plot_Amplicon_numbers(rawCounts(MA1))
-dev.off()
-
-MA2 <- derepMulti(MA1)
-
-MA3 <- dadaMulti(MA2, err=NULL, selfConsist=TRUE,
-                 multithread=TRUE)
-
-MA4 <- MultiAmplicon:::mergeMulti(MA3, justConcatenate=TRUE)
-                 
-MA5 <- MultiAmplicon:::sequenceTableMulti(MA4)
-
-MA6 <- MultiAmplicon:::noChimeMulti(MA5, mc.cores=20)
-
+    names(MA6@sequenceTableNoChime) <- rownames(MA6)
+    STnoC <- MA6@sequenceTableNoChime
+    save(STnoC, file="/SAN/Metabarcoding/table.Rdata")
+} else {load(file="/SAN/Metabarcoding/table.Rdata")} ## -> STnoC
 
 ########## From here: work with MA package finished #### 
-
-names(MA6@sequenceTableNoChime) <- rownames(MA6)
-STnoC <- MA6@sequenceTableNoChime
 
 all.dada.seq <- DNAStringSet(unlist(lapply(STnoC, colnames)))
 
 ## writeFasta(all.dada.seq, "/SAN/Metabarcoding/AA_combi/all_dada.fasta")
-
-## the level percent of non-Bimera sequences
-lapply(seq_along(MA6@sequenceTable), function (i){
-    sum(STnoC[[i]]/sum(MA6@sequenceTable[[i]]))
-})
 
 sumSample <- lapply(STnoC, rowSums)
 dadaMapped <- melt(sumSample)
@@ -122,15 +118,13 @@ cluster.table.sample <- plot.exclude.clusters(Dmap, 2)
 dev.off()
 
 Samples.to.exclude <- names(cluster.table.sample[cluster.table.sample==2])
-
+save(Samples.to.exclude, file="/SAN/Metabarcoding/exclude.Rdata")
 
 pdf("figures/dada_primer_exclusion_test.pdf", width=24, height=12)
 cluster.table.primer <- plot.exclude.clusters(t(Dmap), 2)
 dev.off()
 
 Primers.to.exclude <- names(cluster.table.primer[cluster.table.primer==2])
-
-
 
 ########## Remove failed samples ###########################    
 tSTnoC <- lapply(STnoC, function(x) as.data.frame(t(x)))
@@ -147,16 +141,18 @@ dev.off()
 ## follow this 
 ## https://f1000research.com/articles/5-1492/v2
 
-## phylogenetic trees 
+
 align.seqtab <- function (seqtab){
     seqs <- getSequences(seqtab)
     names(seqs) <- seqs 
     alignment <- AlignSeqs(RNAStringSet(DNAStringSet(seqs)), anchor=NA)
 }
 
-alignments <- mclapply(STnoC, align.seqtab, mc.cores=20)
-
-
+## phylogenetic trees 
+if(newAlign){
+    alignments <- mclapply(STnoC, align.seqtab, mc.cores=20)
+    save(alignments, file="/SAN/Metabarcoding/align.Rdata")
+} else {load(file="/SAN/Metabarcoding/align.Rdata")} ## -> alignments
 
 get.tree.from.alignment <- function (alignment){
     phang.align <- phyDat(as(alignment, "matrix"), type="DNA")
@@ -172,8 +168,10 @@ get.tree.from.alignment <- function (alignment){
     return(fitGTR)
 }
 
-
-tree.l <- mclapply(alignments, get.tree.from.alignment, mc.cores=20)
+if(newTree){
+    tree.l <- mclapply(alignments, get.tree.from.alignment, mc.cores=20)
+    save(tree.l, file="/SAN/Metabarcoding/trees.Rdata")
+} else {load(file="/SAN/Metabarcoding/trees.Rdata")} ## -> tree.l
 
 ##### TAXONOMY assignment
 assign.full.tax <- function(seqtab){
@@ -185,19 +183,7 @@ assign.full.tax <- function(seqtab){
 }
 
 set.seed(100) # Initialize random number generator for reproducibility
-tax.l <- mclapply(STnoC, assign.full.tax, mc.cores=20)
-
-lapply(tax.l, function (x) {
-    rownames(x) <- NULL
-    head(x)
-})
-
-
-## save(MA6, file="/SAN/Metabarcoding/allMA.Rdata")
-
-## save(Samples.to.exclude, file="/SAN/Metabarcoding/exclude.Rdata")
-## save(STnoC, file="/SAN/Metabarcoding/table.Rdata")
-## save(tax.l, file="/SAN/Metabarcoding/taxa.Rdata")
-save(alignments, file="/SAN/Metabarcoding/align.Rdata")
-## save(tree.l, file="/SAN/Metabarcoding/trees.Rdata")
+if(newTax){
+    tax.l <- mclapply(STnoC, assign.full.tax, mc.cores=20)
+} else{load(file="/SAN/Metabarcoding/taxa.Rdata")} ## -> tax.l
 
