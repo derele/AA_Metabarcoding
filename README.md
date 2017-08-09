@@ -1,6 +1,19 @@
 # AA_Metabarcoding
 
+Using my own R package
+[MultiAmplicon](https://github.com/derele/MultiAmplicon) to analyse
+Multi-Marker Amplicon sequencing (aka Metabarcoding) data generated on
+the Fluidigm AccessArray.
 
+
+## Taxonomic annotation
+
+Taxonomic annotation is a core component of downstream analyses and is
+achieved based on RDP classifiers trained on an expanded Silva
+database. 
+
+
+# For Version 0.1 (Not for the current pipeline!)
 [![DOI](https://zenodo.org/badge/67146407.svg)](https://zenodo.org/badge/latestdoi/67146407)
 
 An overview of a metabarcoding pipeline for multiple marker data from
