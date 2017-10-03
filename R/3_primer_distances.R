@@ -1,6 +1,10 @@
 library(grid)
 library(gridExtra)
 
+if(!exists("ps.l.clean")){
+    source("R/2_general_phyloseq.R")
+}
+
 ############ Log count based weighted unifrac distances ################
 ps.l.log <- lapply(ps.l.clean, function (PS) {
     transform_sample_counts(PS, function(x) log(1 + x))

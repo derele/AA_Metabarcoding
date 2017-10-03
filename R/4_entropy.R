@@ -2,8 +2,12 @@ library(BioPhysConnectoR)
 library(ggplot2)
 library(viridis)
 library(parallel)
-
 library(DECIPHER)
+
+if(!exists("primerF")){
+    source("R/1_generalAA.R")
+}
+
 
 aln <- read.fasta("/SAN/db/RDP/Silva_123/silva.nr_v123_EUK.align")
 keep <- !apply(aln$ali, 2, function (x) all(x %in% c("-", ".")) )
