@@ -89,7 +89,7 @@ if (newMA){
 
 all.dada.seq <- DNAStringSet(unlist(lapply(STnoC, colnames)))
 
-## writeFasta(all.dada.seq, "/SAN/Metabarcoding/AA_combi/all_dada.fasta")
+writeFasta(all.dada.seq, "/SAN/Metabarcoding/AA_combi/all_dada.fasta")
 
 sumSample <- lapply(STnoC, rowSums)
 dadaMapped <- melt(sumSample)
@@ -118,7 +118,6 @@ cluster.table.sample <- plot.exclude.clusters(Dmap, 2)
 dev.off()
 
 Samples.to.exclude <- names(cluster.table.sample[cluster.table.sample==2])
-save(Samples.to.exclude, file="/SAN/Metabarcoding/exclude.Rdata")
 
 pdf("figures/dada_primer_exclusion_test.pdf", width=24, height=12)
 cluster.table.primer <- plot.exclude.clusters(t(Dmap), 2)
@@ -131,12 +130,14 @@ tSTnoC <- lapply(STnoC, function(x) as.data.frame(t(x)))
 all.otu.counts <- bind_rows(tSTnoC)
 all.otu.counts[is.na(all.otu.counts)] <- 0
 
+## this figure is disturbing... see what happened!  is it just the
+## "data crunching" above?  With the full data the clustering does not
+## work anymore (memory issue!?)
 
-## this figure is disturbing... see what happened!
-## is it just the "data crunching" above?
-pdf("figures/full_otu_dadaMap.pdf", width=15, height=15)
-pheatmap(log10(all.otu.counts+1))
-dev.off()
+## pdf("figures/full_otu_dadaMap.pdf",
+## width=15, height=15)
+## pheatmap(log10(all.otu.counts+1))
+## dev.off()
 
 ## follow this 
 ## https://f1000research.com/articles/5-1492/v2
@@ -176,14 +177,15 @@ if(newTree){
 ##### TAXONOMY assignment
 assign.full.tax <- function(seqtab){
     seqs <- getSequences(seqtab)
-    taxa <- assignTaxonomy(seqs, "/SAN/db/RDP/Silva_123/SILVA_123_dada2_exp.fasta")
+    taxa <- assignTaxonomy(seqs, "/SAN/db/RDP/Silva_123/SILVA_123_dada2_WHexp.fasta")
     return(taxa)
-    ## taxaS <- addSpecies(taxa, "/SAN/db/RDP/silva_species_assignment_v123.fa.gz", verbose=TRUE)
+    ## taxaS <- addSpecies(taxa, "/SAN/db/RDP/Silva_123/SILVA_123_dada2_WHexp.fasta", verbose=TRUE)
     ## return(taxaS)
 }
 
 set.seed(100) # Initialize random number generator for reproducibility
 if(newTax){
     tax.l <- mclapply(STnoC, assign.full.tax, mc.cores=20)
+    save(tax.l, file="/SAN/Metabarcoding/taxa.Rdata")
 } else{load(file="/SAN/Metabarcoding/taxa.Rdata")} ## -> tax.l
 
