@@ -3,6 +3,10 @@ library(reshape)
 library(ggplot2)
 library(parallel)
 
+if(!exists("Samples.to.exclude")){
+    source("R/1_generalAA.R")
+}
+
 load(file="/SAN/Metabarcoding/table.Rdata") ## -> STnoC
 load(file="/SAN/Metabarcoding/taxa.Rdata") ## tax.l
 load(file="/SAN/Metabarcoding/trees.Rdata") ## tree.l
@@ -24,7 +28,6 @@ ps.l <- lapply(seq_along(STnoC), function (i) {
 })
 
 names(ps.l) <- names(STnoC)
-
 
 ## Focus on the Eukaryotes only
 ps.l <- ps.l[!grepl("Klin|ADM", names(ps.l))]
